@@ -10,6 +10,7 @@ export class InvocableActions {
         try {
             return res.status(200).send({
                 options: [
+                    { title: "Transport Invoice (Doc)", value: "transport_invoice" },
                     { title: "Custom Invoice (Text/Doc)", value: "custom_invoice_document" },
                     { title: "Delivery Update (Text)", value: "delivery_update" },
                     { title: "WhatsApp Document (PDF)", value: "whatsapp_document" },
@@ -172,6 +173,30 @@ export class InvocableActions {
             } 
             else if (templateName === 'hello_world') {
                 messageToLog = "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification.";
+            }
+            // Inside the template mapping section of actionSendMessage in src/controllers/invocable-actions.ts
+            else if (templateName === 'transport_invoice') {
+                // Helper function to grab text from your columns 
+                const getColText = (title: string) => {
+                    const col = itemData.column_values.find((c: any) => c.column?.title?.toLowerCase().trim() === title.toLowerCase().trim());
+                    if (!col) return "N/A";
+                    if (col.display_value) return col.display_value; // Fix for Connect Board/Mirror columns 
+                    return col.text || "N/A";
+                };
+
+                // Mapping variables based on your Meta Template 
+                variables = [
+                    getColText("Business Units"),    // {{1}} e.g., Kaarthika Trading Co
+                    getColText("To"),    // {{2}} e.g., GreenField Commodities
+                    getColText("Total Amount"), // {{3}} e.g., 4000
+                    getColText("Date")          // {{4}} e.g., 2025-09-17
+                ];
+
+                // Format the log message for Monday.com 
+                const bodyText = `The Transport In\n\n${variables[0]} – ${variables[1]} commission bill amt Rs ${variables[2]} for Date ${variables[3]} has been raised and dispatched to your office.\n\nHope to receive payment at earliest.\nAll other details are provided in the attached document.`;
+                
+                // Include document info in log if a file is sent 
+                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
             }
 
             const lang = templateName === 'hello_world' ? 'en_US' : 'en';
