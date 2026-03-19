@@ -21,7 +21,7 @@ interface BoardItem {
     id:            string;
     name:          string;
     column_values: ColumnValue[];
-    board:         Board;           // ✅ Fixed — references the Board interface
+    board:         Board;           
 }
 
 interface BoardColumn {
@@ -36,366 +36,221 @@ interface DuplicateCheckResult {
     duplicateName?: string;
 }
 
-// ─── Private helper: build ApiClient ─────────────────────────
+// ─── Private helpers ─────────────────────────────────────────
 function getClient(token: string): ApiClient {
     return new ApiClient({ token });
 }
 
-// ─── 1. Fetch board columns ───────────────────────────────────
 async function getBoardColumns(token: string, boardId: string | number): Promise<BoardColumn[]> {
-    try {
-        const client = getClient(token);
-        const query = `
-            query($boardId: [ID!]) {
-                boards(ids: $boardId) {
-                    columns { id title type }
-                }
+    const client = getClient(token);
+    const query = `
+        query($boardId: [ID!]) {
+            boards(ids: $boardId) {
+                columns { id title type }
             }
-        `;
-        const response: any = await client.request(query, {
-            boardId: [String(boardId)],
-        });
-
-        const columns: BoardColumn[] = response?.boards?.[0]?.columns || [];
-        if (columns.length === 0) {
-            throw new Error(`No columns found for board ${boardId}`);
         }
-        return columns;
-
-    } catch (err: any) {
-        console.error(`❌ ItemDuplicacy Error (getBoardColumns) board ${boardId}:`, err.message);
-        throw err;
-    }
+    `;
+    const response: any = await client.request(query, { boardId: [String(boardId)] });
+    const columns: BoardColumn[] = response?.boards?.[0]?.columns || [];
+    if (columns.length === 0) throw new Error(`No columns found for board ${boardId}`);
+    return columns;
 }
 
-// ─── 2. Fetch single item by ID ───────────────────────────────
-// board { id } is included so we can derive boardId without
-// needing it passed in from the automation payload
 export async function getRecordById(token: string, itemId: string | number): Promise<BoardItem> {
-    try {
-        const client = getClient(token);
-        const query = `
-            query($itemId: [ID!]) {
-                items(ids: $itemId) {
+    const client = getClient(token);
+    const query = `
+        query($itemId: [ID!]) {
+            items(ids: $itemId) {
+                id name
+                board { id name }
+                column_values {
                     id
-                    name
-                    board { id name }
-                    column_values {
-                        id
-                        column {
-                            title
-                            type
-                        }
-                        text
-                        value
-                        ... on FormulaValue        { display_value }
-                        ... on MirrorValue         { display_value }
-                        ... on BoardRelationValue  { linked_item_ids display_value }
-                    
-                    }
+                    column { title type }
+                    text value
+                    ... on FormulaValue        { display_value }
+                    ... on MirrorValue         { display_value }
+                    ... on BoardRelationValue  { linked_item_ids display_value }
                 }
             }
-        `;
-        const response: any = await client.request(query, {
-            itemId: [String(itemId)],
-        });
-
-        const item: BoardItem = response?.items?.[0];
-        if (!item) throw new Error(`Item ${itemId} not found`);
-
-        return item;
-
-    } catch (err: any) {
-        console.error(`❌ ItemDuplicacy Error (getRecordById) item ${itemId}:`, err.message);
-        throw err;
-    }
+        }
+    `;
+    const response: any = await client.request(query, { itemId: [String(itemId)] });
+    const item: BoardItem = response?.items?.[0];
+    if (!item) throw new Error(`Item ${itemId} not found`);
+    return item;
 }
 
-// ─── 3. Fetch all records from a board ────────────────────────
 async function getAllBoardRecords(token: string, boardId: string | number): Promise<BoardItem[]> {
-    try {
-        const client = getClient(token);
-        const query = `
-            query($boardId: [ID!]) {
-                boards(ids: $boardId) {
-                    items_page(limit: 500) {
-                        items {
+    const client = getClient(token);
+    const query = `
+        query($boardId: [ID!]) {
+            boards(ids: $boardId) {
+                items_page(limit: 500) {
+                    items {
+                        id name
+                        board { id name }
+                        column_values {
                             id
-                            name
-                            board { id name }
-                            column_values {
-                                id
-                                column {
-                                    title
-                                    type
-                                }
-                                text
-                                value
-                                ... on FormulaValue        { display_value }
-                                ... on MirrorValue         { display_value }
-                                ... on BoardRelationValue  { linked_item_ids display_value }
-                            
-                            }
+                            column { title type }
+                            text value
+                            ... on FormulaValue        { display_value }
+                            ... on MirrorValue         { display_value }
+                            ... on BoardRelationValue  { linked_item_ids display_value }
                         }
                     }
                 }
             }
-        `;
-        const response: any = await client.request(query, {
-            boardId: [String(boardId)],
-        });
-
-        return response?.boards?.[0]?.items_page?.items || [];
-
-    } catch (err: any) {
-        console.error(`❌ ItemDuplicacy Error (getAllBoardRecords) board ${boardId}:`, err.message);
-        throw err;
-    }
+        }
+    `;
+    const response: any = await client.request(query, { boardId: [String(boardId)] });
+    return response?.boards?.[0]?.items_page?.items || [];
 }
 
-// ─── 4. Get column ID by title ────────────────────────────────
 function getColumnIdByTitle(columns: BoardColumn[], title: string): string {
-    const col = columns.find(
-        (c) => c.title?.trim().toLowerCase() === title.trim().toLowerCase()
-    );
-    if (!col) {
-        const available = columns.map((c) => `"${c.title}"`).join(", ");
-        throw new Error(`Column "${title}" not found. Available: ${available}`);
-    }
+    const col = columns.find(c => c.title?.trim().toLowerCase() === title.trim().toLowerCase());
+    if (!col) throw new Error(`Column "${title}" not found.`);
     return col.id;
 }
 
-// ─── 5. Get item column value ─────────────────────────────────
 function getItemColValue(item: BoardItem, columnId: string): string {
-    console.log("Get item col value, item ", item);
-    console.log("Get item col value, col id ", columnId);
     const col = item.column_values?.find((cv) => cv.id === columnId);
-    console.log("Get item col value column = ", col);
     if (!col) return "";
-
-    if (col.type === "formula") {
-        return col.display_value?.trim().toLowerCase() ?? "";
-    }
+    if (col.type === "formula") return col.display_value?.trim().toLowerCase() ?? "";
     return col.text?.trim().toLowerCase() ?? "";
 }
 
-// ─── 6. Update item columns ───────────────────────────────────
 async function updateItemColumns(
-    token:        string,
-    boardId:      string | number,
-    itemId:       string | number,
-    columnValues: Record<string, any>
+    token: string, boardId: string | number, itemId: string | number, columnValues: Record<string, any>
 ): Promise<void> {
-    try {
-        const client = getClient(token);
-        const mutation = `
-            mutation($boardId: ID!, $itemId: ID!, $columnValues: JSON!) {
-                change_multiple_column_values(
-                    board_id:      $boardId
-                    item_id:       $itemId
-                    column_values: $columnValues
-                    create_labels_if_missing: false
-                ) { id name }
-            }
-        `;
-        await client.request(mutation, {
-            boardId:      String(boardId),
-            itemId:       String(itemId),
-            columnValues: JSON.stringify(columnValues),
-        });
-
-        console.log(`✅ ItemDuplicacy: Updated item ${itemId} on board ${boardId}`);
-
-    } catch (err: any) {
-        console.error(`❌ ItemDuplicacy Error (updateItemColumns) item ${itemId}:`, err.message);
-        throw err;
-    }
-}
-
-async function runDuplicateCheckWithLogger(
-    token:          string,
-    itemId:         string | number,
-    matchColTitle:  string,          // The column we are checking AGAINST (e.g. "Summary (Fx)")
-    isDupColId:     string,          // Dynamic Checkbox Column ID from the user's recipe
-    dupErrColId:    string,          // Dynamic Text Column ID from the user's recipe
-    logPrefix:      string
-): Promise<DuplicateCheckResult> {
-
-    const triggeringRecord = await getRecordById(token, itemId);
-    const boardId = triggeringRecord.board?.id;
-    if (!boardId) throw new Error(`${logPrefix} Could not determine boardId for item ${itemId}`);
-
-    // Fetch columns and all records
-    const [boardColumns, allRecords] = await Promise.all([
-        getBoardColumns(token, boardId),
-        getAllBoardRecords(token, boardId),
-    ]);
-
-    // We only need to lookup the match column ID now!
-    const matchColId = getColumnIdByTitle(boardColumns, matchColTitle);
-    const matchVal   = getItemColValue(triggeringRecord, matchColId);
-    let isDuplicate  = false;
-    let errorMessage = "";
-    let duplicateRecord;
-    //if (!matchVal) isDuplicate = false; //return { isDuplicate: false };
-    if(!matchVal) {
-        errorMessage = "Matching value is blank:: "+ matchVal + ", match col id:: " + matchColId;
-    } else {
-        // Find duplicate
-        duplicateRecord = allRecords.find(
-            (record) =>
-                String(record.id) !== String(itemId) &&
-                getItemColValue(record, matchColId) === matchVal
-        );
-
-        isDuplicate  = !!duplicateRecord;
-        errorMessage = isDuplicate
-            ? `Duplicate of item ID: ${duplicateRecord!.id} — "${duplicateRecord!.name}"`
-            : "";
-    }
-    
-
-    // Update the dynamic columns selected by the user!
-    await updateItemColumns(token, boardId, itemId, {
-        [isDupColId]:  { checked: isDuplicate ? "true" : "false" },
-        [dupErrColId]: errorMessage,
+    const client = getClient(token);
+    const mutation = `
+        mutation($boardId: ID!, $itemId: ID!, $columnValues: JSON!) {
+            change_multiple_column_values(
+                board_id: $boardId, item_id: $itemId, column_values: $columnValues, create_labels_if_missing: false
+            ) { id name }
+        }
+    `;
+    await client.request(mutation, {
+        boardId: String(boardId), itemId: String(itemId), columnValues: JSON.stringify(columnValues),
     });
-
-    return {
-        isDuplicate,
-        duplicateId:   duplicateRecord?.id,
-        duplicateName: duplicateRecord?.name,
-    };
+    //console.log(`✅ ItemDuplicacy: Updated item ${itemId} on board ${boardId}`);
 }
 
-// ─── 11. V2 Product & Dispatch Checks ────────────────────────────────
+
+// ============================================================================
+// 1. PRODUCT / COUNT BOARD DUPLICATE CHECK (Multiple Columns)
+// ============================================================================
 export async function checkProductDuplicacyV2(
     token: string, itemId: string | number, isDupColId: string, dupErrColId: string
 ): Promise<DuplicateCheckResult> {
-    return await runDuplicateCheckWithLogger(
-        token, itemId, "Summary (Fx)", isDupColId, dupErrColId, "[Product Duplicacy V2]"
-    );
-}
-
-export async function checkDispatchAndBillingDuplicacyV2(
-    token: string, itemId: string | number, isDupColId: string, dupErrColId: string
-): Promise<DuplicateCheckResult> {
-    return await runDuplicateCheckWithLogger(
-        token, itemId, "Invoice No.", isDupColId, dupErrColId, "[Dispatch Duplicacy V2]"
-    );
-}
-
-// ─── 7. Shared duplicate check core ───────────────────────────
-// Extracted so both product and dispatch functions share the same logic
-// boardId comes FROM the item record itself — no need for it in payload
-async function runDuplicateCheck(
-    token:          string,
-    itemId:         string | number,
-    matchColTitle:  string,          // column to check for duplicates
-    isDupColTitle:  string,          // "Is Duplicate" column title
-    dupErrColTitle: string,          // "Duplicate Error" column title
-    logPrefix:      string           // "[Product Duplicacy]" etc.
-): Promise<DuplicateCheckResult> {
-
-    // Step 1 — fetch the triggering record first to get its boardId
+    console.log(`[Product Duplicacy V2] Starting check for item ${itemId}`);
+    
     const triggeringRecord = await getRecordById(token, itemId);
-
-    // Step 2 — derive boardId from the record itself ✅
-    // This is the fix for "automation doesn't send boardId"
     const boardId = triggeringRecord.board?.id;
-    if (!boardId) {
-        throw new Error(`${logPrefix} Could not determine boardId for item ${itemId}`);
-    }
-    console.log(`${logPrefix} Item ${itemId} | Board: ${boardId}`);
+    if (!boardId) throw new Error(`[Product Duplicacy V2] Could not determine boardId for item ${itemId}`);
 
-    // Step 3 — fetch columns and all records in parallel now that we have boardId
     const [boardColumns, allRecords] = await Promise.all([
         getBoardColumns(token, boardId),
         getAllBoardRecords(token, boardId),
     ]);
+    console.log(`[Products board V2] Starting check for item ${itemId}`);
+    
+    // 1. Define all columns that must match exactly
+    const multiMatchColTitles = [
+        "Thread Count", "Machine", "Type", "Fabric 1", "Fabric 1 (Percentage)", 
+        "Fabric 2", "Fabric 2 (Percentage)", "Yarn", "Process", "Certification"
+    ];
 
-    // Step 4 — resolve column IDs by title
-    const matchColId   = getColumnIdByTitle(boardColumns, matchColTitle);
-    const isDupColId   = getColumnIdByTitle(boardColumns, isDupColTitle);
-    const dupErrColId  = getColumnIdByTitle(boardColumns, dupErrColTitle);
+    // 2. Safely map titles to their actual column IDs on the board
+    const matchColIds = multiMatchColTitles.reduce((acc, title) => {
+        const col = boardColumns.find(c => c.title?.trim().toLowerCase() === title.trim().toLowerCase());
+        if (col) acc.push(col.id);
+        return acc;
+    }, [] as string[]);
 
-    // Step 5 — get match value from triggering record
-    const matchVal = getItemColValue(triggeringRecord, matchColId);
-    console.log('Match val ', matchVal);
-    if (!matchVal) {
-        console.log(`${logPrefix} Item ${itemId} has no value in "${matchColTitle}" — skipping`);
-        return { isDuplicate: false };
+    // 3. Extract the exact string values from the triggering record
+    const triggeringValues = matchColIds.map(colId => getItemColValue(triggeringRecord, colId));
+
+    let isDuplicate = false;
+    let errorMessage = "";
+    let duplicateRecord;
+
+    // Optional Check: Ensure at least ONE of these columns actually has data before calling it a blank duplicate
+    const hasAnyValue = triggeringValues.some(val => val !== "");
+
+    if (!hasAnyValue) {
+        errorMessage = "All matching columns are blank.";
+    } else {
+        // 4. Search existing records for a complete match across all defined columns
+        duplicateRecord = allRecords.find((record) => {
+            if (String(record.id) === String(itemId)) return false; // skip self
+            
+            return matchColIds.every((colId, index) => {
+                return getItemColValue(record, colId) === triggeringValues[index];
+            });
+        });
+
+        isDuplicate  = !!duplicateRecord;
+        errorMessage = isDuplicate 
+            ? `Duplicate of item ID: ${duplicateRecord!.id} — "${duplicateRecord!.name}"` 
+            : "";
     }
-    console.log(`${logPrefix} Item ${itemId} | ${matchColTitle}: "${matchVal}"`);
 
-    // Step 6 — find a duplicate
-    const duplicateRecord = allRecords.find(
-        (record) =>
-            String(record.id) !== String(itemId) &&
-            getItemColValue(record, matchColId) === matchVal
-    );
-
-    const isDuplicate  = !!duplicateRecord;
-    const errorMessage = isDuplicate
-        ? `Duplicate of item ID: ${duplicateRecord!.id} — "${duplicateRecord!.name}"`
-        : "";
-
-    console.log(isDuplicate
-        ? `${logPrefix} ✅ Duplicate found: ${itemId} matches ${duplicateRecord!.id}`
-        : `${logPrefix} ✅ No duplicate found for item ${itemId}`
-    );
-
-    // Step 7 — update the triggering record
+    // 5. Update the Dynamic Columns
+    console.log("Product duplicacy checks, isDuplicate:: ", isDuplicate, ", error to be loggged: ", errorMessage);
     await updateItemColumns(token, boardId, itemId, {
         [isDupColId]:  { checked: isDuplicate ? "true" : "false" },
         [dupErrColId]: errorMessage,
     });
 
-    return {
-        isDuplicate,
-        duplicateId:   duplicateRecord?.id,
-        duplicateName: duplicateRecord?.name,
-    };
+    return { isDuplicate, duplicateId: duplicateRecord?.id, duplicateName: duplicateRecord?.name };
 }
 
-// ─── 8. Product duplicate check ──────────────────────────────
-// Rule: duplicate if another record has the same "Summary (Fx)" value
-export async function checkProductDuplicacy(
-    token:  string,
-    itemId: string | number
+
+// ============================================================================
+// 2. DISPATCH & BILLING BOARD DUPLICATE CHECK (Single Column)
+// ============================================================================
+export async function checkDispatchAndBillingDuplicacyV2(
+    token: string, itemId: string | number, isDupColId: string, dupErrColId: string
 ): Promise<DuplicateCheckResult> {
-    try {
-        return await runDuplicateCheck(
-            token,
-            itemId,
-            "Summary (Fx)",   // match column
-            "Is Duplicate",   // flag column
-            "Duplicate Error", // message column
-            "[Product Duplicacy]"
+    console.log(`[Dispatch Duplicacy V2] Starting check for item ${itemId}`);
+    
+    const triggeringRecord = await getRecordById(token, itemId);
+    const boardId = triggeringRecord.board?.id;
+    if (!boardId) throw new Error(`[Dispatch Duplicacy V2] Could not determine boardId for item ${itemId}`);
+
+    const [boardColumns, allRecords] = await Promise.all([
+        getBoardColumns(token, boardId),
+        getAllBoardRecords(token, boardId),
+    ]);
+
+    const matchColId = getColumnIdByTitle(boardColumns, "Invoice No.");
+    const matchVal   = getItemColValue(triggeringRecord, matchColId);
+    
+    let isDuplicate = false;
+    let errorMessage = "";
+    let duplicateRecord;
+
+    if (!matchVal) {
+        errorMessage = "Matching value is blank.";
+    } else {
+        duplicateRecord = allRecords.find(record => 
+            String(record.id) !== String(itemId) && getItemColValue(record, matchColId) === matchVal
         );
-    } catch (err: any) {
-        console.error(`[Product Duplicacy] ❌ Error for item ${itemId}:`, err.message);
-        throw err;
+
+        isDuplicate  = !!duplicateRecord;
+        errorMessage = isDuplicate 
+            ? `Duplicate of item ID: ${duplicateRecord!.id} — "${duplicateRecord!.name}"` 
+            : "";
     }
+    console.log("Dispatch and billing duplicacy checks, isDuplicate:: ", isDuplicate, ", error to be loggged: ", errorMessage);
+    
+
+    await updateItemColumns(token, boardId, itemId, {
+        [isDupColId]:  { checked: isDuplicate ? "true" : "false" },
+        [dupErrColId]: errorMessage,
+    });
+
+    return { isDuplicate, duplicateId: duplicateRecord?.id, duplicateName: duplicateRecord?.name };
 }
 
-// ─── 9. Dispatch & Billing duplicate check ────────────────────
-// Rule: duplicate if another record has the same "Invoice No." value
-export async function checkDispatchAndBillingDuplicacy(
-    token:  string,
-    itemId: string | number
-): Promise<DuplicateCheckResult> {
-    try {
-        return await runDuplicateCheck(
-            token,
-            itemId,
-            "Invoice No.",    // match column
-            "Is Duplicate",   // flag column
-            "Duplicate Error", // message column
-            "[Dispatch Duplicacy]"
-        );
-    } catch (err: any) {
-        console.error(`[Dispatch Duplicacy] ❌ Error for item ${itemId}:`, err.message);
-        throw err;
-    }
-}

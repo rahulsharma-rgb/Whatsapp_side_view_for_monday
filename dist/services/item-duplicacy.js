@@ -13,323 +13,229 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRecordById = getRecordById;
 exports.checkProductDuplicacyV2 = checkProductDuplicacyV2;
 exports.checkDispatchAndBillingDuplicacyV2 = checkDispatchAndBillingDuplicacyV2;
-exports.checkProductDuplicacy = checkProductDuplicacy;
-exports.checkDispatchAndBillingDuplicacy = checkDispatchAndBillingDuplicacy;
 const api_1 = require("@mondaydotcomorg/api");
-// ─── Private helper: build ApiClient ─────────────────────────
+// ─── Private helpers ─────────────────────────────────────────
 function getClient(token) {
     return new api_1.ApiClient({ token });
 }
-// ─── 1. Fetch board columns ───────────────────────────────────
 function getBoardColumns(token, boardId) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b;
-        try {
-            const client = getClient(token);
-            const query = `
-            query($boardId: [ID!]) {
-                boards(ids: $boardId) {
-                    columns { id title type }
-                }
+        const client = getClient(token);
+        const query = `
+        query($boardId: [ID!]) {
+            boards(ids: $boardId) {
+                columns { id title type }
             }
-        `;
-            const response = yield client.request(query, {
-                boardId: [String(boardId)],
-            });
-            const columns = ((_b = (_a = response === null || response === void 0 ? void 0 : response.boards) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.columns) || [];
-            if (columns.length === 0) {
-                throw new Error(`No columns found for board ${boardId}`);
-            }
-            return columns;
         }
-        catch (err) {
-            console.error(`❌ ItemDuplicacy Error (getBoardColumns) board ${boardId}:`, err.message);
-            throw err;
-        }
+    `;
+        const response = yield client.request(query, { boardId: [String(boardId)] });
+        const columns = ((_b = (_a = response === null || response === void 0 ? void 0 : response.boards) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.columns) || [];
+        if (columns.length === 0)
+            throw new Error(`No columns found for board ${boardId}`);
+        return columns;
     });
 }
-// ─── 2. Fetch single item by ID ───────────────────────────────
-// board { id } is included so we can derive boardId without
-// needing it passed in from the automation payload
 function getRecordById(token, itemId) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
-        try {
-            const client = getClient(token);
-            const query = `
-            query($itemId: [ID!]) {
-                items(ids: $itemId) {
+        const client = getClient(token);
+        const query = `
+        query($itemId: [ID!]) {
+            items(ids: $itemId) {
+                id name
+                board { id name }
+                column_values {
                     id
-                    name
-                    board { id name }
-                    column_values {
-                        id
-                        column {
-                            title
-                            type
-                        }
-                        text
-                        value
-                        ... on FormulaValue        { display_value }
-                        ... on MirrorValue         { display_value }
-                        ... on BoardRelationValue  { linked_item_ids display_value }
-                    
-                    }
+                    column { title type }
+                    text value
+                    ... on FormulaValue        { display_value }
+                    ... on MirrorValue         { display_value }
+                    ... on BoardRelationValue  { linked_item_ids display_value }
                 }
             }
-        `;
-            const response = yield client.request(query, {
-                itemId: [String(itemId)],
-            });
-            const item = (_a = response === null || response === void 0 ? void 0 : response.items) === null || _a === void 0 ? void 0 : _a[0];
-            if (!item)
-                throw new Error(`Item ${itemId} not found`);
-            return item;
         }
-        catch (err) {
-            console.error(`❌ ItemDuplicacy Error (getRecordById) item ${itemId}:`, err.message);
-            throw err;
-        }
+    `;
+        const response = yield client.request(query, { itemId: [String(itemId)] });
+        const item = (_a = response === null || response === void 0 ? void 0 : response.items) === null || _a === void 0 ? void 0 : _a[0];
+        if (!item)
+            throw new Error(`Item ${itemId} not found`);
+        return item;
     });
 }
-// ─── 3. Fetch all records from a board ────────────────────────
 function getAllBoardRecords(token, boardId) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a, _b, _c;
-        try {
-            const client = getClient(token);
-            const query = `
-            query($boardId: [ID!]) {
-                boards(ids: $boardId) {
-                    items_page(limit: 500) {
-                        items {
+        const client = getClient(token);
+        const query = `
+        query($boardId: [ID!]) {
+            boards(ids: $boardId) {
+                items_page(limit: 500) {
+                    items {
+                        id name
+                        board { id name }
+                        column_values {
                             id
-                            name
-                            board { id name }
-                            column_values {
-                                id
-                                column {
-                                    title
-                                    type
-                                }
-                                text
-                                value
-                                ... on FormulaValue        { display_value }
-                                ... on MirrorValue         { display_value }
-                                ... on BoardRelationValue  { linked_item_ids display_value }
-                            
-                            }
+                            column { title type }
+                            text value
+                            ... on FormulaValue        { display_value }
+                            ... on MirrorValue         { display_value }
+                            ... on BoardRelationValue  { linked_item_ids display_value }
                         }
                     }
                 }
             }
-        `;
-            const response = yield client.request(query, {
-                boardId: [String(boardId)],
-            });
-            return ((_c = (_b = (_a = response === null || response === void 0 ? void 0 : response.boards) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.items_page) === null || _c === void 0 ? void 0 : _c.items) || [];
         }
-        catch (err) {
-            console.error(`❌ ItemDuplicacy Error (getAllBoardRecords) board ${boardId}:`, err.message);
-            throw err;
-        }
+    `;
+        const response = yield client.request(query, { boardId: [String(boardId)] });
+        return ((_c = (_b = (_a = response === null || response === void 0 ? void 0 : response.boards) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.items_page) === null || _c === void 0 ? void 0 : _c.items) || [];
     });
 }
-// ─── 4. Get column ID by title ────────────────────────────────
 function getColumnIdByTitle(columns, title) {
-    const col = columns.find((c) => { var _a; return ((_a = c.title) === null || _a === void 0 ? void 0 : _a.trim().toLowerCase()) === title.trim().toLowerCase(); });
-    if (!col) {
-        const available = columns.map((c) => `"${c.title}"`).join(", ");
-        throw new Error(`Column "${title}" not found. Available: ${available}`);
-    }
+    const col = columns.find(c => { var _a; return ((_a = c.title) === null || _a === void 0 ? void 0 : _a.trim().toLowerCase()) === title.trim().toLowerCase(); });
+    if (!col)
+        throw new Error(`Column "${title}" not found.`);
     return col.id;
 }
-// ─── 5. Get item column value ─────────────────────────────────
 function getItemColValue(item, columnId) {
     var _a, _b, _c, _d, _e;
-    console.log("Get item col value, item ", item);
-    console.log("Get item col value, col id ", columnId);
     const col = (_a = item.column_values) === null || _a === void 0 ? void 0 : _a.find((cv) => cv.id === columnId);
-    console.log("Get item col value column = ", col);
     if (!col)
         return "";
-    if (col.type === "formula") {
+    if (col.type === "formula")
         return (_c = (_b = col.display_value) === null || _b === void 0 ? void 0 : _b.trim().toLowerCase()) !== null && _c !== void 0 ? _c : "";
-    }
     return (_e = (_d = col.text) === null || _d === void 0 ? void 0 : _d.trim().toLowerCase()) !== null && _e !== void 0 ? _e : "";
 }
-// ─── 6. Update item columns ───────────────────────────────────
 function updateItemColumns(token, boardId, itemId, columnValues) {
     return __awaiter(this, void 0, void 0, function* () {
-        try {
-            const client = getClient(token);
-            const mutation = `
-            mutation($boardId: ID!, $itemId: ID!, $columnValues: JSON!) {
-                change_multiple_column_values(
-                    board_id:      $boardId
-                    item_id:       $itemId
-                    column_values: $columnValues
-                    create_labels_if_missing: false
-                ) { id name }
-            }
-        `;
-            yield client.request(mutation, {
-                boardId: String(boardId),
-                itemId: String(itemId),
-                columnValues: JSON.stringify(columnValues),
-            });
-            console.log(`✅ ItemDuplicacy: Updated item ${itemId} on board ${boardId}`);
+        const client = getClient(token);
+        const mutation = `
+        mutation($boardId: ID!, $itemId: ID!, $columnValues: JSON!) {
+            change_multiple_column_values(
+                board_id: $boardId, item_id: $itemId, column_values: $columnValues, create_labels_if_missing: false
+            ) { id name }
         }
-        catch (err) {
-            console.error(`❌ ItemDuplicacy Error (updateItemColumns) item ${itemId}:`, err.message);
-            throw err;
-        }
+    `;
+        yield client.request(mutation, {
+            boardId: String(boardId), itemId: String(itemId), columnValues: JSON.stringify(columnValues),
+        });
+        console.log(`✅ ItemDuplicacy: Updated item ${itemId} on board ${boardId}`);
     });
 }
-function runDuplicateCheckWithLogger(token, itemId, matchColTitle, // The column we are checking AGAINST (e.g. "Summary (Fx)")
-isDupColId, // Dynamic Checkbox Column ID from the user's recipe
-dupErrColId, // Dynamic Text Column ID from the user's recipe
-logPrefix) {
+// ============================================================================
+// 1. PRODUCT / COUNT BOARD DUPLICATE CHECK (Multiple Columns)
+// ============================================================================
+function checkProductDuplicacyV2(token, itemId, isDupColId, dupErrColId) {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
+        console.log(`[Product Duplicacy V2] Starting check for item ${itemId}`);
         const triggeringRecord = yield getRecordById(token, itemId);
         const boardId = (_a = triggeringRecord.board) === null || _a === void 0 ? void 0 : _a.id;
         if (!boardId)
-            throw new Error(`${logPrefix} Could not determine boardId for item ${itemId}`);
-        // Fetch columns and all records
+            throw new Error(`[Product Duplicacy V2] Could not determine boardId for item ${itemId}`);
         const [boardColumns, allRecords] = yield Promise.all([
             getBoardColumns(token, boardId),
             getAllBoardRecords(token, boardId),
         ]);
-        // We only need to lookup the match column ID now!
-        const matchColId = getColumnIdByTitle(boardColumns, matchColTitle);
-        const matchVal = getItemColValue(triggeringRecord, matchColId);
+        // 1. Define all columns that must match exactly
+        const multiMatchColTitles = [
+            "Thread Count", "Machine", "Type", "Fabric 1", "Fabric 1 (Percentage)",
+            "Fabric 2", "Fabric 2 (Percentage)", "Yarn", "Process", "Certification"
+        ];
+        // 2. Safely map titles to their actual column IDs on the board
+        const matchColIds = multiMatchColTitles.reduce((acc, title) => {
+            const col = boardColumns.find(c => { var _a; return ((_a = c.title) === null || _a === void 0 ? void 0 : _a.trim().toLowerCase()) === title.trim().toLowerCase(); });
+            if (col)
+                acc.push(col.id);
+            return acc;
+        }, []);
+        // 3. Extract the exact string values from the triggering record
+        const triggeringValues = matchColIds.map(colId => getItemColValue(triggeringRecord, colId));
         let isDuplicate = false;
         let errorMessage = "";
         let duplicateRecord;
-        //if (!matchVal) isDuplicate = false; //return { isDuplicate: false };
-        if (!matchVal) {
-            errorMessage = "Matching value is blank:: " + matchVal + ", match col id:: " + matchColId;
+        // Optional Check: Ensure at least ONE of these columns actually has data before calling it a blank duplicate
+        const hasAnyValue = triggeringValues.some(val => val !== "");
+        if (!hasAnyValue) {
+            errorMessage = "All matching columns are blank.";
         }
         else {
-            // Find duplicate
-            duplicateRecord = allRecords.find((record) => String(record.id) !== String(itemId) &&
-                getItemColValue(record, matchColId) === matchVal);
+            // 4. Search existing records for a complete match across all defined columns
+            duplicateRecord = allRecords.find((record) => {
+                if (String(record.id) === String(itemId))
+                    return false; // skip self
+                return matchColIds.every((colId, index) => {
+                    return getItemColValue(record, colId) === triggeringValues[index];
+                });
+            });
             isDuplicate = !!duplicateRecord;
             errorMessage = isDuplicate
                 ? `Duplicate of item ID: ${duplicateRecord.id} — "${duplicateRecord.name}"`
                 : "";
         }
-        // Update the dynamic columns selected by the user!
+        // 5. Update the Dynamic Columns
         yield updateItemColumns(token, boardId, itemId, {
             [isDupColId]: { checked: isDuplicate ? "true" : "false" },
             [dupErrColId]: errorMessage,
         });
-        return {
-            isDuplicate,
-            duplicateId: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.id,
-            duplicateName: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.name,
-        };
+        return { isDuplicate, duplicateId: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.id, duplicateName: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.name };
     });
 }
-// ─── 11. V2 Product & Dispatch Checks ────────────────────────────────
-function checkProductDuplicacyV2(token, itemId, isDupColId, dupErrColId) {
-    return __awaiter(this, void 0, void 0, function* () {
-        return yield runDuplicateCheckWithLogger(token, itemId, "Summary (Fx)", isDupColId, dupErrColId, "[Product Duplicacy V2]");
-    });
-}
+// ============================================================================
+// 2. DISPATCH & BILLING BOARD DUPLICATE CHECK (Single Column)
+// ============================================================================
 function checkDispatchAndBillingDuplicacyV2(token, itemId, isDupColId, dupErrColId) {
     return __awaiter(this, void 0, void 0, function* () {
-        return yield runDuplicateCheckWithLogger(token, itemId, "Invoice No.", isDupColId, dupErrColId, "[Dispatch Duplicacy V2]");
-    });
-}
-// ─── 7. Shared duplicate check core ───────────────────────────
-// Extracted so both product and dispatch functions share the same logic
-// boardId comes FROM the item record itself — no need for it in payload
-function runDuplicateCheck(token, itemId, matchColTitle, // column to check for duplicates
-isDupColTitle, // "Is Duplicate" column title
-dupErrColTitle, // "Duplicate Error" column title
-logPrefix // "[Product Duplicacy]" etc.
-) {
-    return __awaiter(this, void 0, void 0, function* () {
         var _a;
-        // Step 1 — fetch the triggering record first to get its boardId
+        console.log(`[Dispatch Duplicacy V2] Starting check for item ${itemId}`);
         const triggeringRecord = yield getRecordById(token, itemId);
-        // Step 2 — derive boardId from the record itself ✅
-        // This is the fix for "automation doesn't send boardId"
         const boardId = (_a = triggeringRecord.board) === null || _a === void 0 ? void 0 : _a.id;
-        if (!boardId) {
-            throw new Error(`${logPrefix} Could not determine boardId for item ${itemId}`);
-        }
-        console.log(`${logPrefix} Item ${itemId} | Board: ${boardId}`);
-        // Step 3 — fetch columns and all records in parallel now that we have boardId
+        if (!boardId)
+            throw new Error(`[Dispatch Duplicacy V2] Could not determine boardId for item ${itemId}`);
         const [boardColumns, allRecords] = yield Promise.all([
             getBoardColumns(token, boardId),
             getAllBoardRecords(token, boardId),
         ]);
-        // Step 4 — resolve column IDs by title
-        const matchColId = getColumnIdByTitle(boardColumns, matchColTitle);
-        const isDupColId = getColumnIdByTitle(boardColumns, isDupColTitle);
-        const dupErrColId = getColumnIdByTitle(boardColumns, dupErrColTitle);
-        // Step 5 — get match value from triggering record
+        const matchColId = getColumnIdByTitle(boardColumns, "Invoice No.");
         const matchVal = getItemColValue(triggeringRecord, matchColId);
-        console.log('Match val ', matchVal);
+        let isDuplicate = false;
+        let errorMessage = "";
+        let duplicateRecord;
         if (!matchVal) {
-            console.log(`${logPrefix} Item ${itemId} has no value in "${matchColTitle}" — skipping`);
-            return { isDuplicate: false };
+            errorMessage = "Matching value is blank.";
         }
-        console.log(`${logPrefix} Item ${itemId} | ${matchColTitle}: "${matchVal}"`);
-        // Step 6 — find a duplicate
-        const duplicateRecord = allRecords.find((record) => String(record.id) !== String(itemId) &&
-            getItemColValue(record, matchColId) === matchVal);
-        const isDuplicate = !!duplicateRecord;
-        const errorMessage = isDuplicate
-            ? `Duplicate of item ID: ${duplicateRecord.id} — "${duplicateRecord.name}"`
-            : "";
-        console.log(isDuplicate
-            ? `${logPrefix} ✅ Duplicate found: ${itemId} matches ${duplicateRecord.id}`
-            : `${logPrefix} ✅ No duplicate found for item ${itemId}`);
-        // Step 7 — update the triggering record
+        else {
+            duplicateRecord = allRecords.find(record => String(record.id) !== String(itemId) && getItemColValue(record, matchColId) === matchVal);
+            isDuplicate = !!duplicateRecord;
+            errorMessage = isDuplicate
+                ? `Duplicate of item ID: ${duplicateRecord.id} — "${duplicateRecord.name}"`
+                : "";
+        }
         yield updateItemColumns(token, boardId, itemId, {
             [isDupColId]: { checked: isDuplicate ? "true" : "false" },
             [dupErrColId]: errorMessage,
         });
-        return {
-            isDuplicate,
-            duplicateId: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.id,
-            duplicateName: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.name,
-        };
+        return { isDuplicate, duplicateId: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.id, duplicateName: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.name };
     });
 }
-// ─── 8. Product duplicate check ──────────────────────────────
-// Rule: duplicate if another record has the same "Summary (Fx)" value
-function checkProductDuplicacy(token, itemId) {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            return yield runDuplicateCheck(token, itemId, "Summary (Fx)", // match column
-            "Is Duplicate", // flag column
-            "Duplicate Error", // message column
-            "[Product Duplicacy]");
-        }
-        catch (err) {
-            console.error(`[Product Duplicacy] ❌ Error for item ${itemId}:`, err.message);
-            throw err;
-        }
-    });
+/*
+// ============================================================================
+// 3. V1 BACKWARDS COMPATIBILITY
+// (For any old workflows that don't pass dynamic columns)
+// ============================================================================
+export async function checkProductDuplicacy(token: string, itemId: string | number): Promise<DuplicateCheckResult> {
+    const triggeringRecord = await getRecordById(token, itemId);
+    const boardColumns = await getBoardColumns(token, triggeringRecord.board!.id);
+    const isDupColId = getColumnIdByTitle(boardColumns, "Is Duplicate");
+    const dupErrColId = getColumnIdByTitle(boardColumns, "Duplicate Error");
+    return await checkProductDuplicacyV2(token, itemId, isDupColId, dupErrColId);
 }
-// ─── 9. Dispatch & Billing duplicate check ────────────────────
-// Rule: duplicate if another record has the same "Invoice No." value
-function checkDispatchAndBillingDuplicacy(token, itemId) {
-    return __awaiter(this, void 0, void 0, function* () {
-        try {
-            return yield runDuplicateCheck(token, itemId, "Invoice No.", // match column
-            "Is Duplicate", // flag column
-            "Duplicate Error", // message column
-            "[Dispatch Duplicacy]");
-        }
-        catch (err) {
-            console.error(`[Dispatch Duplicacy] ❌ Error for item ${itemId}:`, err.message);
-            throw err;
-        }
-    });
+
+export async function checkDispatchAndBillingDuplicacy(token: string, itemId: string | number): Promise<DuplicateCheckResult> {
+    const triggeringRecord = await getRecordById(token, itemId);
+    const boardColumns = await getBoardColumns(token, triggeringRecord.board!.id);
+    const isDupColId = getColumnIdByTitle(boardColumns, "Is Duplicate");
+    const dupErrColId = getColumnIdByTitle(boardColumns, "Duplicate Error");
+    return await checkDispatchAndBillingDuplicacyV2(token, itemId, isDupColId, dupErrColId);
 }
+*/ 

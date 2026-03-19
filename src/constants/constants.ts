@@ -1,0 +1,2 @@
+export const PRODUCT_BOARD_ID              = "5026452240";//process.env.PRODUCT_BOARD_ID;
+export const DISPATCH_AND_BILLING_BOARD_ID = "5026792171"; //process.env.DISPATCH_AND_BILLING_BOARD_ID;
