@@ -13,9 +13,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const api_1 = require("@mondaydotcomorg/api");
 const queries_graphql_1 = require("../queries.graphql");
 class MondayService {
-    /**
-     * Gets basic user information
-     */
     static getMe(shortLiveToken) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
@@ -27,9 +24,6 @@ class MondayService {
             }
         });
     }
-    /**
-     * Fetches a specific column value - useful for simple lookups
-     */
     static getColumnValue(token, itemId, columnId) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c, _d;
@@ -44,15 +38,11 @@ class MondayService {
             }
         });
     }
-    /**
-     * Updates a column value. Automatically handles Long Text formatting.
-     */
     static changeColumnValue(token, boardId, itemId, columnId, value) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const mondayClient = new api_1.ApiClient({ token: token });
                 let finalValue = value;
-                // If it's a Long Text column, Monday requires a specific JSON object {text: "..."}
                 if (typeof value === 'string' && columnId.includes('long_text')) {
                     finalValue = { text: value };
                 }
@@ -69,10 +59,6 @@ class MondayService {
             }
         });
     }
-    /**
-     * Fetches all column definitions for a board.
-     * Used to populate dropdowns in the automation recipe.
-     */
     static getBoardColumns(token, boardId) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b;
@@ -95,16 +81,14 @@ class MondayService {
         });
     }
     /**
-     * THE SMART QUERY: Fetches item data, assets, and column values.
-     * Optimized to prevent "Complexity Budget Exhausted" errors on Subitems.
+     * THE SMART QUERY: Now explicitly fetches Formula display_values
+     * and handles Parent Items seamlessly.
      */
     static getSmartItemData(token, itemId) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a;
             try {
                 const mondayClient = new api_1.ApiClient({ token: token });
-                // We fetch the board ID dynamically so subitem updates work correctly.
-                // Fragments for BoardRelation and MirrorValue are kept light (no nested assets).
                 const query = `
               query ($itemId: [ID!]) {
                 items(ids: $itemId) {
@@ -115,11 +99,21 @@ class MondayService {
                     column { title }
                     text
                     value
-                    ... on BoardRelationValue {
-                      display_value
-                    }
-                    ... on MirrorValue {
-                      display_value
+                    ... on FormulaValue { display_value }
+                    ... on BoardRelationValue { display_value }
+                    ... on MirrorValue { display_value }
+                  }
+                  parent_item {
+                    id
+                    assets { id public_url name }
+                    column_values {
+                      id
+                      column { title }
+                      text
+                      value
+                      ... on FormulaValue { display_value }
+                      ... on BoardRelationValue { display_value }
+                      ... on MirrorValue { display_value }
                     }
                   }
                 }

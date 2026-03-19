@@ -167,7 +167,10 @@ function getColumnIdByTitle(columns: BoardColumn[], title: string): string {
 
 // ─── 5. Get item column value ─────────────────────────────────
 function getItemColValue(item: BoardItem, columnId: string): string {
+    console.log("Get item col value, item ", item);
+    console.log("Get item col value, col id ", columnId);
     const col = item.column_values?.find((cv) => cv.id === columnId);
+    console.log("Get item col value column = ", col);
     if (!col) return "";
 
     if (col.type === "formula") {
@@ -245,6 +248,7 @@ async function runDuplicateCheck(
 
     // Step 5 — get match value from triggering record
     const matchVal = getItemColValue(triggeringRecord, matchColId);
+    console.log('Match val ', matchVal);
     if (!matchVal) {
         console.log(`${logPrefix} Item ${itemId} has no value in "${matchColTitle}" — skipping`);
         return { isDuplicate: false };

@@ -16,9 +16,20 @@ const item_duplicacy_2 = require("../services/item-duplicacy");
 const PRODUCT_BOARD_ID = "5026452240"; //process.env.PRODUCT_BOARD_ID;
 const DISPATCH_AND_BILLING_BOARD_ID = "5026792171"; //process.env.DISPATCH_AND_BILLING_BOARD_ID;
 class DuplicateRules {
+    static actionCheckDuplicate2(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            console.log('duplicaterules.ts action check duplicates 102 ');
+            const shortLivedToken = (_a = req.session) === null || _a === void 0 ? void 0 : _a.shortLivedToken;
+            const { payload } = req.body;
+            console.log('Token = ', shortLivedToken, " , body ", payload);
+            return res.status(200).send({});
+        });
+    }
     static actionCheckDuplicate(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c, _d, _e, _f;
+            console.log('duplicaterules.ts action check duplicates 100 ');
             const shortLivedToken = (_a = req.session) === null || _a === void 0 ? void 0 : _a.shortLivedToken;
             const { payload } = req.body;
             if (!shortLivedToken) {

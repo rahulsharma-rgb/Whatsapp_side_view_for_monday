@@ -7,7 +7,17 @@ const DISPATCH_AND_BILLING_BOARD_ID = "5026792171"; //process.env.DISPATCH_AND_B
 
 export class DuplicateRules {
 
+    static async actionCheckDuplicate2(req: Request, res: Response) {
+        console.log('duplicaterules.ts action check duplicates 102 ');
+        const shortLivedToken = req.session?.shortLivedToken;
+        const { payload }     = req.body;
+        console.log('Token = ', shortLivedToken, " , body ", payload);
+        return res.status(200).send({});
+
+    }
+
     static async actionCheckDuplicate(req: Request, res: Response) {
+        console.log('duplicaterules.ts action check duplicates 100 ');
         const shortLivedToken = req.session?.shortLivedToken;
         const { payload }     = req.body;
         

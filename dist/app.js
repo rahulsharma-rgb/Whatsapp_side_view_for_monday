@@ -9,7 +9,7 @@ const body_parser_1 = __importDefault(require("body-parser"));
 const routes_1 = __importDefault(require("./routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
-const port = process.env.PORT;
+const port = process.env.PORT || 8080;
 app.use(body_parser_1.default.json());
 app.use(routes_1.default);
 app.listen(port, () => console.log(`Quickstart app listening at http://localhost:${port}`));

@@ -19,10 +19,13 @@ const whatsapp_service_1 = require("../services/whatsapp-service");
 class InvocableActions {
     static getTemplates(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            console.log("Inovcalbe Actions get templates ");
             try {
                 return res.status(200).send({
                     options: [
+                        { title: "Dispatch & Billing (Doc)", value: "disptach_and_billing" },
+                        { title: "Sales Conf. - BUYER (Doc)", value: "sales_confirmation_buyer" },
+                        { title: "Sales Conf. - SUPPLIER (Doc)", value: "sales_confirmation_supplier" },
+                        { title: "Commission Invoice (Doc)", value: "commission_invoice" },
                         { title: "Transport Invoice (Doc)", value: "transport_invoice" },
                         { title: "Custom Invoice (Text/Doc)", value: "custom_invoice_document" },
                         { title: "Delivery Update (Text)", value: "delivery_update" },
@@ -61,7 +64,7 @@ class InvocableActions {
     }
     static actionSendMessage(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6;
             const shortLivedToken = (_a = req.session) === null || _a === void 0 ? void 0 : _a.shortLivedToken;
             const { payload } = req.body;
             if (!shortLivedToken)
@@ -70,7 +73,6 @@ class InvocableActions {
             const itemId = (_f = (_e = payload.inputFields) === null || _e === void 0 ? void 0 : _e.itemId) !== null && _f !== void 0 ? _f : (_g = payload.context) === null || _g === void 0 ? void 0 : _g.itemId;
             let actualBoardId = boardId;
             try {
-                // Grab the initial UI mappings (these might be Parent columns!)
                 let finalResponseColId = (_j = (_h = payload.inputFields) === null || _h === void 0 ? void 0 : _h.responseColumn) !== null && _j !== void 0 ? _j : (_k = payload.inboundFieldValues) === null || _k === void 0 ? void 0 : _k.responseColumn;
                 let finalWamidColId = (_m = (_l = payload.inputFields) === null || _l === void 0 ? void 0 : _l.wamidColumn) !== null && _m !== void 0 ? _m : (_o = payload.inboundFieldValues) === null || _o === void 0 ? void 0 : _o.wamidColumn;
                 let finalTemplateColId = (_q = (_p = payload.inputFields) === null || _p === void 0 ? void 0 : _p.templateLogColumn) !== null && _q !== void 0 ? _q : (_r = payload.inboundFieldValues) === null || _r === void 0 ? void 0 : _r.templateLogColumn;
@@ -87,9 +89,6 @@ class InvocableActions {
                     return res.status(200).send({});
                 actualBoardId = ((_2 = itemData.board) === null || _2 === void 0 ? void 0 : _2.id) || boardId;
                 const isSubitem = String(actualBoardId) !== String(boardId);
-                // ==========================================
-                // SUBITEM AUTO-TRANSLATOR (The Magic Fix)
-                // ==========================================
                 if (isSubitem) {
                     const parentColumns = yield monday_service_1.default.getBoardColumns(shortLivedToken, boardId);
                     if (parentColumns) {
@@ -99,7 +98,6 @@ class InvocableActions {
                             const parentCol = parentColumns.find((c) => c.id === parentColId);
                             if (!parentCol)
                                 return parentColId;
-                            // Look for a column on the Subitem with the EXACT same title
                             const subCol = itemData.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === parentCol.title.toLowerCase().trim(); });
                             return subCol ? subCol.id : parentColId;
                         };
@@ -111,7 +109,62 @@ class InvocableActions {
                         finalDocumentColId = getSubitemColId(finalDocumentColId);
                     }
                 }
-                // --- Continue with normal sending logic ---
+                // ==========================================
+                // UNIVERSAL EXTRACTOR (Partial Match & Formula Fix)
+                // ==========================================
+                const getColText = (...titles) => {
+                    var _a, _b;
+                    let foundCol = null;
+                    // 1. Exact Match Search
+                    for (const title of titles) {
+                        const cleanTitle = title.toLowerCase().trim();
+                        foundCol = itemData.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === cleanTitle; });
+                        if (!foundCol && ((_a = itemData.parent_item) === null || _a === void 0 ? void 0 : _a.column_values)) {
+                            foundCol = itemData.parent_item.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === cleanTitle; });
+                        }
+                        if (foundCol)
+                            break;
+                    }
+                    // 2. Partial Match Search (if exact fails - e.g. looking for "Total Amount" but column is "Total Amount (Rs)")
+                    if (!foundCol) {
+                        for (const title of titles) {
+                            const cleanTitle = title.toLowerCase().trim();
+                            foundCol = itemData.column_values.find((c) => { var _a, _b; return (_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().includes(cleanTitle); });
+                            if (!foundCol && ((_b = itemData.parent_item) === null || _b === void 0 ? void 0 : _b.column_values)) {
+                                foundCol = itemData.parent_item.column_values.find((c) => { var _a, _b; return (_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().includes(cleanTitle); });
+                            }
+                            if (foundCol)
+                                break;
+                        }
+                    }
+                    // Extract and format the value
+                    if (foundCol) {
+                        // Clean up extra quotes Monday puts on formulas 
+                        const cleanStr = (str) => String(str).replace(/['"]+/g, '');
+                        if (foundCol.display_value)
+                            return cleanStr(foundCol.display_value);
+                        if (foundCol.text)
+                            return cleanStr(foundCol.text);
+                        if (foundCol.value) {
+                            try {
+                                const parsed = JSON.parse(foundCol.value);
+                                if (parsed !== null && typeof parsed === 'object') {
+                                    if (parsed.result !== undefined && parsed.result !== null)
+                                        return cleanStr(parsed.result);
+                                    if (parsed.value !== undefined && parsed.value !== null)
+                                        return cleanStr(parsed.value);
+                                }
+                                else if (parsed !== null && parsed !== "") {
+                                    return cleanStr(parsed);
+                                }
+                            }
+                            catch (e) {
+                                return cleanStr(foundCol.value);
+                            }
+                        }
+                    }
+                    return "N/A";
+                };
                 const phoneCol = itemData.column_values.find((c) => c.id === finalPhoneColId);
                 const rawPhone = phoneCol ? (phoneCol.text || phoneCol.display_value || "") : "";
                 let cleanPhone = rawPhone.replace(/[^0-9]/g, '').slice(0, 15);
@@ -125,18 +178,22 @@ class InvocableActions {
                 let fileName = undefined;
                 let messageToLog = `[Template Sent: ${templateName}]`;
                 // Document Handler
-                if (finalDocumentColId && itemData.column_values) {
-                    const docCol = itemData.column_values.find((c) => c.id === finalDocumentColId);
+                if (finalDocumentColId) {
+                    let docCol = (_3 = itemData.column_values) === null || _3 === void 0 ? void 0 : _3.find((c) => c.id === finalDocumentColId);
+                    let assetsSource = itemData.assets;
+                    if (!docCol && itemData.parent_item) {
+                        docCol = (_4 = itemData.parent_item.column_values) === null || _4 === void 0 ? void 0 : _4.find((c) => c.id === finalDocumentColId);
+                        assetsSource = itemData.parent_item.assets;
+                    }
                     if (docCol && docCol.value) {
                         try {
                             const parsedValue = JSON.parse(docCol.value);
-                            if (parsedValue && parsedValue.files && parsedValue.files.length > 0) {
+                            if (((_5 = parsedValue === null || parsedValue === void 0 ? void 0 : parsedValue.files) === null || _5 === void 0 ? void 0 : _5.length) > 0) {
                                 const targetAssetId = parsedValue.files[0].assetId.toString();
-                                const specificAsset = (_3 = itemData.assets) === null || _3 === void 0 ? void 0 : _3.find((a) => a.id.toString() === targetAssetId);
+                                const specificAsset = assetsSource === null || assetsSource === void 0 ? void 0 : assetsSource.find((a) => a.id.toString() === targetAssetId);
                                 if (specificAsset) {
                                     fileUrl = specificAsset.public_url;
                                     fileName = specificAsset.name;
-                                    messageToLog = `[Document Sent: ${fileName}]\n\nTemplate: ${templateName}`;
                                 }
                             }
                         }
@@ -145,32 +202,78 @@ class InvocableActions {
                         }
                     }
                 }
-                if (templateName === 'whatsapp_document' && !fileUrl) {
-                    if (itemData.assets && itemData.assets.length > 0) {
-                        fileUrl = itemData.assets[0].public_url;
-                        fileName = itemData.assets[0].name;
-                    }
-                    else {
-                        const linkedCol = itemData.column_values.find((c) => c.linked_items && c.linked_items.length > 0);
-                        if (linkedCol && linkedCol.linked_items[0].assets && linkedCol.linked_items[0].assets.length > 0) {
-                            fileUrl = linkedCol.linked_items[0].assets[0].public_url;
-                            fileName = linkedCol.linked_items[0].assets[0].name;
-                        }
-                    }
-                    if (fileUrl)
-                        messageToLog = `[Document Sent: ${fileName}]\n\nHello! Please find your requested document attached above.`;
+                // ==========================================
+                // TEMPLATE MAPPINGS
+                // ==========================================
+                let actualMetaTemplateName = templateName;
+                if (templateName === 'disptach_and_billing') {
+                    variables = [
+                        getColText("Buyer Business Unit"),
+                        getColText("Supplier"),
+                        getColText("Buyer"),
+                        getColText("Counts Summary"),
+                        isSubitem ? getColText("Quantity Dispatched") : getColText("Quantity"),
+                        getColText("Total Weight"),
+                        getColText("Buyer Office Address"),
+                        getColText("Dispatch Date")
+                    ];
+                    const bodyText = `Greetings from ${variables[0]}.\n\nWe are reaching out to confirm that your shipment has been delivered successfully. The delivery included items from the mill ${variables[1]} for the buyer ${variables[2]}. The specific counts for this order are ${variables[3]}, packed securely in ${variables[4]} bags, with a total delivery weight of ${variables[5]} KG. The entire shipment was delivered safely to the location ${variables[6]} on ${variables[7]}.\n\nThank You for your business!`;
+                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
                 }
-                // Variables Handler
-                const getColText = (title) => {
-                    const col = itemData.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === title.toLowerCase().trim(); });
-                    if (!col)
-                        return "N/A";
-                    if (col.linked_items && col.linked_items.length > 0)
-                        return col.linked_items[0].name || col.display_value || "N/A";
-                    return col.text || col.display_value || "N/A";
-                };
-                if (templateName === 'custom_invoice_document') {
-                    variables = [getColText("Client Name"), getColText("Invoice No"), getColText("Amount"), getColText("Business Unit")];
+                else if (templateName === 'sales_confirmation_buyer') {
+                    actualMetaTemplateName = 'sales_confirmation';
+                    variables = [
+                        getColText("Buyer Business Unit"),
+                        getColText("Supplier"),
+                        getColText("Buyer"),
+                        getColText("Summary"),
+                        getColText("Quantity"),
+                        getColText("Bag Weight"),
+                        getColText("Final Rate")
+                    ];
+                    const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n* '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'*\nAll other details are provided in the attached document.`;
+                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
+                }
+                else if (templateName === 'sales_confirmation_supplier') {
+                    actualMetaTemplateName = 'sales_confirmation';
+                    variables = [
+                        getColText("Supplier Business Unit"),
+                        getColText("Supplier"),
+                        getColText("Buyer"),
+                        getColText("Summary"),
+                        getColText("Quantity"),
+                        getColText("Bag Weight"),
+                        getColText("Final Rate")
+                    ];
+                    const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n* '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'*\nAll other details are provided in the attached document.`;
+                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
+                }
+                else if (templateName === 'commission_invoice') {
+                    variables = [
+                        getColText("Business Units"),
+                        getColText("Company Mill/Factory/Delivery Address"),
+                        getColText("Company"),
+                        getColText("Net Amount"),
+                        getColText("Invoice From Date"),
+                        getColText("Invoice To Date"),
+                        getColText("Phone"),
+                        getColText("Company")
+                    ];
+                    const bodyText = `Thanks for purchasing yarn via ${variables[0]}.\n\n${variables[1]} - ${variables[2]} commission bill amt Rs. ${variables[3]} from Date ${variables[4]} to ${variables[5]} has been raised and dispatched to your office.\n\nHope to receive the payment at earliest contact - ${variables[6]}\nThanks.\nAccount dept\n${variables[7]}\nAll other details are provided in the attached document.`;
+                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
+                }
+                else if (templateName === 'transport_invoice') {
+                    variables = [
+                        getColText("Business Units"),
+                        getColText("To"),
+                        getColText("Total Amount"),
+                        getColText("Date")
+                    ];
+                    const bodyText = `The Transport In\n\n${variables[0]} – ${variables[1]} commission bill amt Rs ${variables[2]} for Date ${variables[3]} has been raised and dispatched to your office.\n\nHope to receive payment at earliest.\nAll other details are provided in the attached document.`;
+                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
+                }
+                else if (templateName === 'custom_invoice_document') {
+                    variables = [getColText("Client Name", "Buyer"), getColText("Invoice No"), getColText("Amount"), getColText("Business Unit")];
                     const bodyText = `Dear ${variables[0]},\n\nPlease find attached your Brokerage Bill (Invoice No.${variables[1]}) for the total amount of Rs.${variables[2]}.\n\nWe at ${variables[3]} appreciate your business and wish you a great day!`;
                     messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
                 }
@@ -185,32 +288,9 @@ class InvocableActions {
                 else if (templateName === 'hello_world') {
                     messageToLog = "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification.";
                 }
-                // Inside the template mapping section of actionSendMessage in src/controllers/invocable-actions.ts
-                else if (templateName === 'transport_invoice') {
-                    // Helper function to grab text from your columns 
-                    const getColText = (title) => {
-                        const col = itemData.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === title.toLowerCase().trim(); });
-                        if (!col)
-                            return "N/A";
-                        if (col.display_value)
-                            return col.display_value; // Fix for Connect Board/Mirror columns 
-                        return col.text || "N/A";
-                    };
-                    // Mapping variables based on your Meta Template 
-                    variables = [
-                        getColText("Business Units"), // {{1}} e.g., Kaarthika Trading Co
-                        getColText("To"), // {{2}} e.g., GreenField Commodities
-                        getColText("Total Amount"), // {{3}} e.g., 4000
-                        getColText("Date") // {{4}} e.g., 2025-09-17
-                    ];
-                    // Format the log message for Monday.com 
-                    const bodyText = `The Transport In\n\n${variables[0]} – ${variables[1]} commission bill amt Rs ${variables[2]} for Date ${variables[3]} has been raised and dispatched to your office.\n\nHope to receive payment at earliest.\nAll other details are provided in the attached document.`;
-                    // Include document info in log if a file is sent 
-                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-                }
-                const lang = templateName === 'hello_world' ? 'en_US' : 'en';
-                console.log(`📞 Sending '${templateName}' to phone: ${cleanPhone}`);
-                const result = yield whatsapp_service_1.WhatsappService.sendAdvancedTemplate(cleanPhone, templateName, variables, fileUrl, fileName, lang);
+                const lang = actualMetaTemplateName === 'hello_world' ? 'en_US' : 'en';
+                console.log(`📞 Sending '${actualMetaTemplateName}' to phone: ${cleanPhone}`);
+                const result = yield whatsapp_service_1.WhatsappService.sendAdvancedTemplate(cleanPhone, actualMetaTemplateName, variables, fileUrl, fileName, lang);
                 if (result.messages) {
                     if (finalWamidColId)
                         yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalWamidColId, result.messages[0].id);
@@ -222,17 +302,13 @@ class InvocableActions {
                         yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, "✅ Sent!");
                 }
                 else {
-                    console.error(`❌ Meta API Failed:`, JSON.stringify(result.error));
                     if (finalResponseColId)
-                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, `❌ ${((_4 = result.error) === null || _4 === void 0 ? void 0 : _4.message) || "Error"}`);
+                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, `❌ ${((_6 = result.error) === null || _6 === void 0 ? void 0 : _6.message) || "Error"}`);
                 }
                 return res.status(200).send({});
             }
             catch (err) {
                 console.error("❌ Catch Error in actionSendMessage:", err);
-                if (((_5 = payload.inputFields) === null || _5 === void 0 ? void 0 : _5.responseColumn) && actualBoardId && itemId && shortLivedToken) {
-                    yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, payload.inputFields.responseColumn, "❌ Server Error");
-                }
                 return res.status(500).send({ message: 'Error' });
             }
         });
