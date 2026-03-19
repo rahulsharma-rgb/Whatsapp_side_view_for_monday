@@ -38,13 +38,13 @@ function reverseString(req, res) {
         try {
             const { inputFields } = payload;
             const { boardId, itemId, sourceColumnId, targetColumnId } = inputFields;
-            const sourceWord = yield monday_service_1.default.getColumnValue(shortLivedToken, itemId, sourceColumnId);
+            const sourceWord = yield monday_service_1.default.getColumnValue(shortLivedToken, itemId, String(sourceColumnId));
             if (!sourceWord) {
-                yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, targetColumnId, 'No word found');
+                yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, String(targetColumnId), 'No word found');
                 return res.status(200).send({});
             }
             const reversedWord = sourceWord.split('').reverse().join('');
-            yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, targetColumnId, reversedWord);
+            yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, String(targetColumnId), reversedWord);
         }
         catch (e) {
             console.log(e.toString());

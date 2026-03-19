@@ -42,7 +42,8 @@ const router = (0, express_1.Router)();
 const transformationController = __importStar(require("../controllers/monday-controller"));
 const authentication_1 = __importDefault(require("../middlewares/authentication"));
 const invocable_actions_1 = require("../controllers/invocable-actions"); // IMPORT NEW CLASS
-// Existing boilerplate routes
+const duplicate_rules_1 = require("../controllers/duplicate-rules");
+// 1. Existing boilerplate routes
 router.post('/api/monday/execute_action', authentication_1.default, transformationController.executeAction);
 router.post('/api/monday/reverse_string', authentication_1.default, transformationController.reverseString);
 // ==========================================
@@ -50,5 +51,13 @@ router.post('/api/monday/reverse_string', authentication_1.default, transformati
 // ==========================================
 // This is the Run URL you will put in the Monday Developer Center:
 // https://[your-tunnel-url]/api/monday/action_send_message
+// File: src/routes/monday.ts
+// 2. WhatsApp Messages
 router.post('/api/monday/action_send_message', authentication_1.default, invocable_actions_1.InvocableActions.actionSendMessage);
+router.post('/api/monday/action_send_message', authentication_1.default, invocable_actions_1.InvocableActions.actionSendMessage);
+// Add this new route for the dropdown!
+router.post('/api/monday/get_templates', authentication_1.default, invocable_actions_1.InvocableActions.getTemplates);
+router.post('/api/monday/get_columns', authentication_1.default, invocable_actions_1.InvocableActions.getColumns);
+//3. Checking Duplicates
+router.post("/api/monday/check-duplicates", authentication_1.default, duplicate_rules_1.DuplicateRules.actionCheckDuplicate);
 exports.default = router;

@@ -5,8 +5,9 @@ import MondayService from '../services/monday-service';
 import { WhatsappService } from '../services/whatsapp-service';
 
 export class InvocableActions {
-
+    
     static async getTemplates(req: Request, res: Response) {
+        console.log("Inovcalbe Actions get templates ");
         try {
             return res.status(200).send({
                 options: [

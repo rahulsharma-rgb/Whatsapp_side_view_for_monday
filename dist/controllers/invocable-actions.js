@@ -17,88 +17,223 @@ exports.InvocableActions = void 0;
 const monday_service_1 = __importDefault(require("../services/monday-service"));
 const whatsapp_service_1 = require("../services/whatsapp-service");
 class InvocableActions {
-    static actionSendMessage(req, res) {
+    static getTemplates(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+            console.log("Inovcalbe Actions get templates ");
+            try {
+                return res.status(200).send({
+                    options: [
+                        { title: "Transport Invoice (Doc)", value: "transport_invoice" },
+                        { title: "Custom Invoice (Text/Doc)", value: "custom_invoice_document" },
+                        { title: "Delivery Update (Text)", value: "delivery_update" },
+                        { title: "WhatsApp Document (PDF)", value: "whatsapp_document" },
+                        { title: "Hello World (Test)", value: "hello_world" }
+                    ]
+                });
+            }
+            catch (err) {
+                return res.status(500).send({ message: 'Internal error' });
+            }
+        });
+    }
+    static getColumns(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             const shortLivedToken = (_a = req.session) === null || _a === void 0 ? void 0 : _a.shortLivedToken;
             const { payload } = req.body;
-            console.log("🚀 Triggered!");
-            console.log("BODY:", JSON.stringify(req.body));
-            console.log("inputFields:", JSON.stringify(payload === null || payload === void 0 ? void 0 : payload.inputFields));
-            console.log("inboundFieldValues:", JSON.stringify(payload === null || payload === void 0 ? void 0 : payload.inboundFieldValues));
-            console.log("context:", JSON.stringify(payload === null || payload === void 0 ? void 0 : payload.context));
-            if (!shortLivedToken) {
-                return res.status(401).send({ message: 'Unauthorized: Missing token' });
-            }
+            const boardId = payload === null || payload === void 0 ? void 0 : payload.boardId;
+            if (!shortLivedToken || !boardId)
+                return res.status(200).send({ options: [] });
             try {
-                // 1. Extract variables from Monday payload
-                const boardId = (_c = (_b = payload.inputFields) === null || _b === void 0 ? void 0 : _b.boardId) !== null && _c !== void 0 ? _c : (_d = payload.context) === null || _d === void 0 ? void 0 : _d.boardId;
-                const itemId = (_f = (_e = payload.inputFields) === null || _e === void 0 ? void 0 : _e.itemId) !== null && _f !== void 0 ? _f : (_g = payload.context) === null || _g === void 0 ? void 0 : _g.itemId;
-                const toPhoneColumn = (_j = (_h = payload.inputFields) === null || _h === void 0 ? void 0 : _h.toPhoneColumn) !== null && _j !== void 0 ? _j : (_k = payload.inboundFieldValues) === null || _k === void 0 ? void 0 : _k.toPhoneColumn;
-                const responseColumn = (_m = (_l = payload.inputFields) === null || _l === void 0 ? void 0 : _l.responseColumn) !== null && _m !== void 0 ? _m : (_o = payload.inboundFieldValues) === null || _o === void 0 ? void 0 : _o.responseColumn;
-                // Extract the new WAMID column!
-                const wamidColumn = (_q = (_p = payload.inputFields) === null || _p === void 0 ? void 0 : _p.wamidColumn) !== null && _q !== void 0 ? _q : (_r = payload.inboundFieldValues) === null || _r === void 0 ? void 0 : _r.wamidColumn;
-                const { templateId, fromPhone, message } = payload.inboundFieldValues || {};
-                console.log(`boardId=${boardId} itemId=${itemId} toPhoneColumn=${toPhoneColumn} responseColumn=${responseColumn} wamidColumn=${wamidColumn}`);
-                if (!itemId || !toPhoneColumn) {
-                    console.log("❌ Missing itemId or toPhoneColumn");
+                const columns = yield monday_service_1.default.getBoardColumns(shortLivedToken, boardId);
+                if (!columns)
+                    return res.status(200).send({ options: [] });
+                const options = columns.map((col) => ({
+                    title: `${col.title} (${col.type})`,
+                    value: col.id
+                }));
+                return res.status(200).send({ options });
+            }
+            catch (err) {
+                return res.status(500).send({ message: 'Internal error' });
+            }
+        });
+    }
+    static actionSendMessage(req, res) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5;
+            const shortLivedToken = (_a = req.session) === null || _a === void 0 ? void 0 : _a.shortLivedToken;
+            const { payload } = req.body;
+            if (!shortLivedToken)
+                return res.status(401).send({ message: 'Unauthorized' });
+            const boardId = (_c = (_b = payload.inputFields) === null || _b === void 0 ? void 0 : _b.boardId) !== null && _c !== void 0 ? _c : (_d = payload.context) === null || _d === void 0 ? void 0 : _d.boardId;
+            const itemId = (_f = (_e = payload.inputFields) === null || _e === void 0 ? void 0 : _e.itemId) !== null && _f !== void 0 ? _f : (_g = payload.context) === null || _g === void 0 ? void 0 : _g.itemId;
+            let actualBoardId = boardId;
+            try {
+                // Grab the initial UI mappings (these might be Parent columns!)
+                let finalResponseColId = (_j = (_h = payload.inputFields) === null || _h === void 0 ? void 0 : _h.responseColumn) !== null && _j !== void 0 ? _j : (_k = payload.inboundFieldValues) === null || _k === void 0 ? void 0 : _k.responseColumn;
+                let finalWamidColId = (_m = (_l = payload.inputFields) === null || _l === void 0 ? void 0 : _l.wamidColumn) !== null && _m !== void 0 ? _m : (_o = payload.inboundFieldValues) === null || _o === void 0 ? void 0 : _o.wamidColumn;
+                let finalTemplateColId = (_q = (_p = payload.inputFields) === null || _p === void 0 ? void 0 : _p.templateLogColumn) !== null && _q !== void 0 ? _q : (_r = payload.inboundFieldValues) === null || _r === void 0 ? void 0 : _r.templateLogColumn;
+                let finalMessageColId = (_t = (_s = payload.inputFields) === null || _s === void 0 ? void 0 : _s.messageLogColumn) !== null && _t !== void 0 ? _t : (_u = payload.inboundFieldValues) === null || _u === void 0 ? void 0 : _u.messageLogColumn;
+                const documentColumnObj = (_w = (_v = payload.inputFields) === null || _v === void 0 ? void 0 : _v.documentColumn) !== null && _w !== void 0 ? _w : (_x = payload.inboundFieldValues) === null || _x === void 0 ? void 0 : _x.documentColumn;
+                let finalDocumentColId = (_y = documentColumnObj === null || documentColumnObj === void 0 ? void 0 : documentColumnObj.value) !== null && _y !== void 0 ? _y : documentColumnObj;
+                const { templateId, toPhoneColumn } = payload.inboundFieldValues || {};
+                const templateName = (_0 = (_z = templateId === null || templateId === void 0 ? void 0 : templateId.value) !== null && _z !== void 0 ? _z : templateId) !== null && _0 !== void 0 ? _0 : 'hello_world';
+                let finalPhoneColId = (_1 = toPhoneColumn === null || toPhoneColumn === void 0 ? void 0 : toPhoneColumn.value) !== null && _1 !== void 0 ? _1 : toPhoneColumn;
+                if (!itemId || !finalPhoneColId)
                     return res.status(200).send({});
-                }
-                // 2. Fetch the phone number from the board
-                const rawPhoneNumber = yield monday_service_1.default.getColumnValue(shortLivedToken, itemId, toPhoneColumn);
-                if (!rawPhoneNumber) {
-                    console.log(`❌ No phone number found in column: ${toPhoneColumn}`);
+                const itemData = yield monday_service_1.default.getSmartItemData(shortLivedToken, itemId);
+                if (!itemData)
                     return res.status(200).send({});
+                actualBoardId = ((_2 = itemData.board) === null || _2 === void 0 ? void 0 : _2.id) || boardId;
+                const isSubitem = String(actualBoardId) !== String(boardId);
+                // ==========================================
+                // SUBITEM AUTO-TRANSLATOR (The Magic Fix)
+                // ==========================================
+                if (isSubitem) {
+                    const parentColumns = yield monday_service_1.default.getBoardColumns(shortLivedToken, boardId);
+                    if (parentColumns) {
+                        const getSubitemColId = (parentColId) => {
+                            if (!parentColId)
+                                return undefined;
+                            const parentCol = parentColumns.find((c) => c.id === parentColId);
+                            if (!parentCol)
+                                return parentColId;
+                            // Look for a column on the Subitem with the EXACT same title
+                            const subCol = itemData.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === parentCol.title.toLowerCase().trim(); });
+                            return subCol ? subCol.id : parentColId;
+                        };
+                        finalPhoneColId = getSubitemColId(finalPhoneColId);
+                        finalResponseColId = getSubitemColId(finalResponseColId);
+                        finalWamidColId = getSubitemColId(finalWamidColId);
+                        finalTemplateColId = getSubitemColId(finalTemplateColId);
+                        finalMessageColId = getSubitemColId(finalMessageColId);
+                        finalDocumentColId = getSubitemColId(finalDocumentColId);
+                    }
                 }
-                // 3. Clean the phone number
-                let cleanPhone = "";
-                try {
-                    const parsed = JSON.parse(rawPhoneNumber);
-                    cleanPhone = (parsed && parsed.phone) ? parsed.phone.replace(/[^0-9]/g, '') : rawPhoneNumber.replace(/[^0-9]/g, '');
-                }
-                catch (e) {
-                    cleanPhone = rawPhoneNumber.replace(/[^0-9]/g, '').slice(0, 15);
-                }
+                // --- Continue with normal sending logic ---
+                const phoneCol = itemData.column_values.find((c) => c.id === finalPhoneColId);
+                const rawPhone = phoneCol ? (phoneCol.text || phoneCol.display_value || "") : "";
+                let cleanPhone = rawPhone.replace(/[^0-9]/g, '').slice(0, 15);
                 if (!cleanPhone || cleanPhone.length < 10) {
-                    console.log(`❌ Invalid phone format: ${cleanPhone}`);
+                    if (finalResponseColId)
+                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, "❌ Error: Invalid Phone");
                     return res.status(200).send({});
                 }
-                const templateName = (_t = (_s = templateId === null || templateId === void 0 ? void 0 : templateId.value) !== null && _s !== void 0 ? _s : templateId) !== null && _t !== void 0 ? _t : 'hello_world';
-                const finalFromPhone = (_u = fromPhone === null || fromPhone === void 0 ? void 0 : fromPhone.value) !== null && _u !== void 0 ? _u : fromPhone;
-                const finalMessage = (_v = message === null || message === void 0 ? void 0 : message.value) !== null && _v !== void 0 ? _v : message;
-                console.log(`📞 Sending '${templateName}' to ${cleanPhone}...`);
-                // 4. Call Meta API
-                const result = yield whatsapp_service_1.WhatsappService.sendTemplate(cleanPhone, templateName, 'en_US', finalFromPhone, finalMessage);
-                // 5. Handle the Response and Write to BOTH columns
-                if (result.messages && result.messages.length > 0) {
-                    const wamid = result.messages[0].id;
-                    console.log(`✅ Sent successfully! Message ID: ${wamid}`);
-                    // Write a clean SUCCESS message to the Response column
-                    if (responseColumn) {
-                        yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, responseColumn, JSON.stringify("✅ Successfully Sent!"));
+                let variables = [];
+                let fileUrl = undefined;
+                let fileName = undefined;
+                let messageToLog = `[Template Sent: ${templateName}]`;
+                // Document Handler
+                if (finalDocumentColId && itemData.column_values) {
+                    const docCol = itemData.column_values.find((c) => c.id === finalDocumentColId);
+                    if (docCol && docCol.value) {
+                        try {
+                            const parsedValue = JSON.parse(docCol.value);
+                            if (parsedValue && parsedValue.files && parsedValue.files.length > 0) {
+                                const targetAssetId = parsedValue.files[0].assetId.toString();
+                                const specificAsset = (_3 = itemData.assets) === null || _3 === void 0 ? void 0 : _3.find((a) => a.id.toString() === targetAssetId);
+                                if (specificAsset) {
+                                    fileUrl = specificAsset.public_url;
+                                    fileName = specificAsset.name;
+                                    messageToLog = `[Document Sent: ${fileName}]\n\nTemplate: ${templateName}`;
+                                }
+                            }
+                        }
+                        catch (e) {
+                            console.error("Could not parse file value");
+                        }
                     }
-                    // Write the raw ID to the new WAMID column
-                    if (wamidColumn) {
-                        yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, wamidColumn, JSON.stringify(wamid));
+                }
+                if (templateName === 'whatsapp_document' && !fileUrl) {
+                    if (itemData.assets && itemData.assets.length > 0) {
+                        fileUrl = itemData.assets[0].public_url;
+                        fileName = itemData.assets[0].name;
                     }
+                    else {
+                        const linkedCol = itemData.column_values.find((c) => c.linked_items && c.linked_items.length > 0);
+                        if (linkedCol && linkedCol.linked_items[0].assets && linkedCol.linked_items[0].assets.length > 0) {
+                            fileUrl = linkedCol.linked_items[0].assets[0].public_url;
+                            fileName = linkedCol.linked_items[0].assets[0].name;
+                        }
+                    }
+                    if (fileUrl)
+                        messageToLog = `[Document Sent: ${fileName}]\n\nHello! Please find your requested document attached above.`;
+                }
+                // Variables Handler
+                const getColText = (title) => {
+                    const col = itemData.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === title.toLowerCase().trim(); });
+                    if (!col)
+                        return "N/A";
+                    if (col.linked_items && col.linked_items.length > 0)
+                        return col.linked_items[0].name || col.display_value || "N/A";
+                    return col.text || col.display_value || "N/A";
+                };
+                if (templateName === 'custom_invoice_document') {
+                    variables = [getColText("Client Name"), getColText("Invoice No"), getColText("Amount"), getColText("Business Unit")];
+                    const bodyText = `Dear ${variables[0]},\n\nPlease find attached your Brokerage Bill (Invoice No.${variables[1]}) for the total amount of Rs.${variables[2]}.\n\nWe at ${variables[3]} appreciate your business and wish you a great day!`;
+                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
+                }
+                else if (templateName === 'delivery_update') {
+                    variables = [
+                        getColText("Business Units"), getColText("Mill"), getColText("Buyer"),
+                        getColText("Count"), getColText("Bags"), getColText("Total KGS"),
+                        getColText("Sizing Name"), getColText("Date")
+                    ];
+                    messageToLog = `Delivery Update from ${variables[0]}\n\nMill: ${variables[1]}\nBuyer: ${variables[2]}\nCount: ${variables[3]}\nQty: ${variables[4]} Bags\nWeight: ${variables[5]} KG\nTo: ${variables[6]}\nDate: ${variables[7]}\n\nThank You.`;
+                }
+                else if (templateName === 'hello_world') {
+                    messageToLog = "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification.";
+                }
+                // Inside the template mapping section of actionSendMessage in src/controllers/invocable-actions.ts
+                else if (templateName === 'transport_invoice') {
+                    // Helper function to grab text from your columns 
+                    const getColText = (title) => {
+                        const col = itemData.column_values.find((c) => { var _a, _b; return ((_b = (_a = c.column) === null || _a === void 0 ? void 0 : _a.title) === null || _b === void 0 ? void 0 : _b.toLowerCase().trim()) === title.toLowerCase().trim(); });
+                        if (!col)
+                            return "N/A";
+                        if (col.display_value)
+                            return col.display_value; // Fix for Connect Board/Mirror columns 
+                        return col.text || "N/A";
+                    };
+                    // Mapping variables based on your Meta Template 
+                    variables = [
+                        getColText("Business Units"), // {{1}} e.g., Kaarthika Trading Co
+                        getColText("To"), // {{2}} e.g., GreenField Commodities
+                        getColText("Total Amount"), // {{3}} e.g., 4000
+                        getColText("Date") // {{4}} e.g., 2025-09-17
+                    ];
+                    // Format the log message for Monday.com 
+                    const bodyText = `The Transport In\n\n${variables[0]} – ${variables[1]} commission bill amt Rs ${variables[2]} for Date ${variables[3]} has been raised and dispatched to your office.\n\nHope to receive payment at earliest.\nAll other details are provided in the attached document.`;
+                    // Include document info in log if a file is sent 
+                    messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
+                }
+                const lang = templateName === 'hello_world' ? 'en_US' : 'en';
+                console.log(`📞 Sending '${templateName}' to phone: ${cleanPhone}`);
+                const result = yield whatsapp_service_1.WhatsappService.sendAdvancedTemplate(cleanPhone, templateName, variables, fileUrl, fileName, lang);
+                if (result.messages) {
+                    if (finalWamidColId)
+                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalWamidColId, result.messages[0].id);
+                    if (finalTemplateColId)
+                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalTemplateColId, templateName);
+                    if (finalMessageColId)
+                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalMessageColId, messageToLog);
+                    if (finalResponseColId)
+                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, "✅ Sent!");
                 }
                 else {
-                    console.error(`❌ WhatsApp API Failed:`, JSON.stringify(result.error));
-                    // Write the exact ERROR to the Response column
-                    if (responseColumn) {
-                        const errorMsg = ((_w = result.error) === null || _w === void 0 ? void 0 : _w.message) || "Unknown Meta API Error";
-                        yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, responseColumn, JSON.stringify(`❌ Error: ${errorMsg}`));
-                    }
-                    // Clear out the WAMID column since it failed
-                    if (wamidColumn) {
-                        yield monday_service_1.default.changeColumnValue(shortLivedToken, boardId, itemId, wamidColumn, JSON.stringify(""));
-                    }
+                    console.error(`❌ Meta API Failed:`, JSON.stringify(result.error));
+                    if (finalResponseColId)
+                        yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, `❌ ${((_4 = result.error) === null || _4 === void 0 ? void 0 : _4.message) || "Error"}`);
                 }
                 return res.status(200).send({});
             }
             catch (err) {
-                console.error("❌ Error:", err);
-                return res.status(500).send({ message: 'Internal server error' });
+                console.error("❌ Catch Error in actionSendMessage:", err);
+                if (((_5 = payload.inputFields) === null || _5 === void 0 ? void 0 : _5.responseColumn) && actualBoardId && itemId && shortLivedToken) {
+                    yield monday_service_1.default.changeColumnValue(shortLivedToken, actualBoardId, itemId, payload.inputFields.responseColumn, "❌ Server Error");
+                }
+                return res.status(500).send({ message: 'Error' });
             }
         });
     }
