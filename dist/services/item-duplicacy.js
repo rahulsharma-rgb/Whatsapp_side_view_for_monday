@@ -62,14 +62,16 @@ function getRecordById(token, itemId) {
                     board { id name }
                     column_values {
                         id
-                        title
+                        column {
+                            title
+                            type
+                        }
                         text
                         value
-                        type
-                        display_value
                         ... on FormulaValue        { display_value }
                         ... on MirrorValue         { display_value }
-                        ... on BoardRelationValue  { display_value }
+                        ... on BoardRelationValue  { linked_item_ids display_value }
+                    
                     }
                 }
             }
@@ -101,16 +103,19 @@ function getAllBoardRecords(token, boardId) {
                         items {
                             id
                             name
+                            board { id name }
                             column_values {
                                 id
-                                title
+                                column {
+                                    title
+                                    type
+                                }
                                 text
                                 value
-                                type
-                                display_value
                                 ... on FormulaValue        { display_value }
                                 ... on MirrorValue         { display_value }
-                                ... on BoardRelationValue  { display_value }
+                                ... on BoardRelationValue  { linked_item_ids display_value }
+                            
                             }
                         }
                     }
@@ -143,7 +148,7 @@ function getItemColValue(item, columnId) {
     const col = (_a = item.column_values) === null || _a === void 0 ? void 0 : _a.find((cv) => cv.id === columnId);
     if (!col)
         return "";
-    if (col.type === "formula" || col.type === "mirror" || col.type === "board_relation") {
+    if (col.type === "formula") {
         return (_c = (_b = col.display_value) === null || _b === void 0 ? void 0 : _b.trim().toLowerCase()) !== null && _c !== void 0 ? _c : "";
     }
     return (_e = (_d = col.text) === null || _d === void 0 ? void 0 : _d.trim().toLowerCase()) !== null && _e !== void 0 ? _e : "";

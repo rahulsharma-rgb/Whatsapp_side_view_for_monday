@@ -131,7 +131,6 @@ async function getAllBoardRecords(token: string, boardId: string | number): Prom
                                 }
                                 text
                                 value
-                                display_value
                                 ... on FormulaValue        { display_value }
                                 ... on MirrorValue         { display_value }
                                 ... on BoardRelationValue  { linked_item_ids display_value }
@@ -171,7 +170,7 @@ function getItemColValue(item: BoardItem, columnId: string): string {
     const col = item.column_values?.find((cv) => cv.id === columnId);
     if (!col) return "";
 
-    if (col.type === "formula" || col.type === "mirror" || col.type === "board_relation") {
+    if (col.type === "formula") {
         return col.display_value?.trim().toLowerCase() ?? "";
     }
     return col.text?.trim().toLowerCase() ?? "";
