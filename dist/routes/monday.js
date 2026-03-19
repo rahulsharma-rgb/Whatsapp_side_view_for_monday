@@ -59,7 +59,7 @@ router.post('/api/monday/action_send_message', authentication_1.default, invocab
 router.post('/api/monday/get_templates', authentication_1.default, invocable_actions_1.InvocableActions.getTemplates);
 router.post('/api/monday/get_columns', authentication_1.default, invocable_actions_1.InvocableActions.getColumns);
 //3. Checking Duplicates
-router.post("/api/monday/check-duplicates", authentication_1.default, duplicate_rules_1.DuplicateRules.actionCheckDuplicate);
+router.post("/api/monday/check-duplicates", authentication_1.default, duplicate_rules_1.DuplicateRules.actionCheckDuplicateWithLogger);
 //3. Checking Duplicates 2
-router.post("/api/monday/v2/check-duplicates", authentication_1.default, duplicate_rules_1.DuplicateRules.actionCheckDuplicate2);
+//router.post("/api/monday/v2/check-duplicates", authenticationMiddleware, DuplicateRules.actionCheckDuplicate2);
 exports.default = router;

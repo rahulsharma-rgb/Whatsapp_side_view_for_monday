@@ -212,6 +212,79 @@ async function updateItemColumns(
     }
 }
 
+async function runDuplicateCheckWithLogger(
+    token:          string,
+    itemId:         string | number,
+    matchColTitle:  string,          // The column we are checking AGAINST (e.g. "Summary (Fx)")
+    isDupColId:     string,          // Dynamic Checkbox Column ID from the user's recipe
+    dupErrColId:    string,          // Dynamic Text Column ID from the user's recipe
+    logPrefix:      string
+): Promise<DuplicateCheckResult> {
+
+    const triggeringRecord = await getRecordById(token, itemId);
+    const boardId = triggeringRecord.board?.id;
+    if (!boardId) throw new Error(`${logPrefix} Could not determine boardId for item ${itemId}`);
+
+    // Fetch columns and all records
+    const [boardColumns, allRecords] = await Promise.all([
+        getBoardColumns(token, boardId),
+        getAllBoardRecords(token, boardId),
+    ]);
+
+    // We only need to lookup the match column ID now!
+    const matchColId = getColumnIdByTitle(boardColumns, matchColTitle);
+    const matchVal   = getItemColValue(triggeringRecord, matchColId);
+    let isDuplicate  = false;
+    let errorMessage = "";
+    let duplicateRecord;
+    //if (!matchVal) isDuplicate = false; //return { isDuplicate: false };
+    if(!matchVal) {
+        errorMessage = "Matching value is blank:: "+ matchVal + ", match col id:: " + matchColId;
+    } else {
+        // Find duplicate
+        duplicateRecord = allRecords.find(
+            (record) =>
+                String(record.id) !== String(itemId) &&
+                getItemColValue(record, matchColId) === matchVal
+        );
+
+        isDuplicate  = !!duplicateRecord;
+        errorMessage = isDuplicate
+            ? `Duplicate of item ID: ${duplicateRecord!.id} — "${duplicateRecord!.name}"`
+            : "";
+    }
+    
+
+    // Update the dynamic columns selected by the user!
+    await updateItemColumns(token, boardId, itemId, {
+        [isDupColId]:  { checked: isDuplicate ? "true" : "false" },
+        [dupErrColId]: errorMessage,
+    });
+
+    return {
+        isDuplicate,
+        duplicateId:   duplicateRecord?.id,
+        duplicateName: duplicateRecord?.name,
+    };
+}
+
+// ─── 11. V2 Product & Dispatch Checks ────────────────────────────────
+export async function checkProductDuplicacyV2(
+    token: string, itemId: string | number, isDupColId: string, dupErrColId: string
+): Promise<DuplicateCheckResult> {
+    return await runDuplicateCheckWithLogger(
+        token, itemId, "Summary (Fx)", isDupColId, dupErrColId, "[Product Duplicacy V2]"
+    );
+}
+
+export async function checkDispatchAndBillingDuplicacyV2(
+    token: string, itemId: string | number, isDupColId: string, dupErrColId: string
+): Promise<DuplicateCheckResult> {
+    return await runDuplicateCheckWithLogger(
+        token, itemId, "Invoice No.", isDupColId, dupErrColId, "[Dispatch Duplicacy V2]"
+    );
+}
+
 // ─── 7. Shared duplicate check core ───────────────────────────
 // Extracted so both product and dispatch functions share the same logic
 // boardId comes FROM the item record itself — no need for it in payload

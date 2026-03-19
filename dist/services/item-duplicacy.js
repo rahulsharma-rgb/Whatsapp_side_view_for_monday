@@ -11,6 +11,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRecordById = getRecordById;
+exports.checkProductDuplicacyV2 = checkProductDuplicacyV2;
+exports.checkDispatchAndBillingDuplicacyV2 = checkDispatchAndBillingDuplicacyV2;
 exports.checkProductDuplicacy = checkProductDuplicacy;
 exports.checkDispatchAndBillingDuplicacy = checkDispatchAndBillingDuplicacy;
 const api_1 = require("@mondaydotcomorg/api");
@@ -145,7 +147,10 @@ function getColumnIdByTitle(columns, title) {
 // ─── 5. Get item column value ─────────────────────────────────
 function getItemColValue(item, columnId) {
     var _a, _b, _c, _d, _e;
+    console.log("Get item col value, item ", item);
+    console.log("Get item col value, col id ", columnId);
     const col = (_a = item.column_values) === null || _a === void 0 ? void 0 : _a.find((cv) => cv.id === columnId);
+    console.log("Get item col value column = ", col);
     if (!col)
         return "";
     if (col.type === "formula") {
@@ -181,6 +186,63 @@ function updateItemColumns(token, boardId, itemId, columnValues) {
         }
     });
 }
+function runDuplicateCheckWithLogger(token, itemId, matchColTitle, // The column we are checking AGAINST (e.g. "Summary (Fx)")
+isDupColId, // Dynamic Checkbox Column ID from the user's recipe
+dupErrColId, // Dynamic Text Column ID from the user's recipe
+logPrefix) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a;
+        const triggeringRecord = yield getRecordById(token, itemId);
+        const boardId = (_a = triggeringRecord.board) === null || _a === void 0 ? void 0 : _a.id;
+        if (!boardId)
+            throw new Error(`${logPrefix} Could not determine boardId for item ${itemId}`);
+        // Fetch columns and all records
+        const [boardColumns, allRecords] = yield Promise.all([
+            getBoardColumns(token, boardId),
+            getAllBoardRecords(token, boardId),
+        ]);
+        // We only need to lookup the match column ID now!
+        const matchColId = getColumnIdByTitle(boardColumns, matchColTitle);
+        const matchVal = getItemColValue(triggeringRecord, matchColId);
+        let isDuplicate = false;
+        let errorMessage = "";
+        let duplicateRecord;
+        //if (!matchVal) isDuplicate = false; //return { isDuplicate: false };
+        if (!matchVal) {
+            errorMessage = "Matching value is blank:: " + matchVal + ", match col id:: " + matchColId;
+        }
+        else {
+            // Find duplicate
+            duplicateRecord = allRecords.find((record) => String(record.id) !== String(itemId) &&
+                getItemColValue(record, matchColId) === matchVal);
+            isDuplicate = !!duplicateRecord;
+            errorMessage = isDuplicate
+                ? `Duplicate of item ID: ${duplicateRecord.id} — "${duplicateRecord.name}"`
+                : "";
+        }
+        // Update the dynamic columns selected by the user!
+        yield updateItemColumns(token, boardId, itemId, {
+            [isDupColId]: { checked: isDuplicate ? "true" : "false" },
+            [dupErrColId]: errorMessage,
+        });
+        return {
+            isDuplicate,
+            duplicateId: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.id,
+            duplicateName: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.name,
+        };
+    });
+}
+// ─── 11. V2 Product & Dispatch Checks ────────────────────────────────
+function checkProductDuplicacyV2(token, itemId, isDupColId, dupErrColId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return yield runDuplicateCheckWithLogger(token, itemId, "Summary (Fx)", isDupColId, dupErrColId, "[Product Duplicacy V2]");
+    });
+}
+function checkDispatchAndBillingDuplicacyV2(token, itemId, isDupColId, dupErrColId) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return yield runDuplicateCheckWithLogger(token, itemId, "Invoice No.", isDupColId, dupErrColId, "[Dispatch Duplicacy V2]");
+    });
+}
 // ─── 7. Shared duplicate check core ───────────────────────────
 // Extracted so both product and dispatch functions share the same logic
 // boardId comes FROM the item record itself — no need for it in payload
@@ -211,6 +273,7 @@ logPrefix // "[Product Duplicacy]" etc.
         const dupErrColId = getColumnIdByTitle(boardColumns, dupErrColTitle);
         // Step 5 — get match value from triggering record
         const matchVal = getItemColValue(triggeringRecord, matchColId);
+        console.log('Match val ', matchVal);
         if (!matchVal) {
             console.log(`${logPrefix} Item ${itemId} has no value in "${matchColTitle}" — skipping`);
             return { isDuplicate: false };

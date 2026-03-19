@@ -31,11 +31,11 @@ router.post('/api/monday/get_templates', authenticationMiddleware, InvocableActi
 router.post('/api/monday/get_columns', authenticationMiddleware, InvocableActions.getColumns);
 
 //3. Checking Duplicates
-router.post("/api/monday/check-duplicates", authenticationMiddleware, DuplicateRules.actionCheckDuplicate);
+router.post("/api/monday/check-duplicates", authenticationMiddleware, DuplicateRules.actionCheckDuplicateWithLogger);
 
 
 //3. Checking Duplicates 2
-router.post("/api/monday/v2/check-duplicates", authenticationMiddleware, DuplicateRules.actionCheckDuplicate2);
+//router.post("/api/monday/v2/check-duplicates", authenticationMiddleware, DuplicateRules.actionCheckDuplicate2);
 
 
 export default router;

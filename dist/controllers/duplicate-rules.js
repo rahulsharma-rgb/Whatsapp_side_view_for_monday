@@ -16,14 +16,45 @@ const item_duplicacy_2 = require("../services/item-duplicacy");
 const PRODUCT_BOARD_ID = "5026452240"; //process.env.PRODUCT_BOARD_ID;
 const DISPATCH_AND_BILLING_BOARD_ID = "5026792171"; //process.env.DISPATCH_AND_BILLING_BOARD_ID;
 class DuplicateRules {
-    static actionCheckDuplicate2(req, res) {
+    static actionCheckDuplicateWithLogger(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            console.log('duplicaterules.ts action check duplicates 102 ');
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+            console.log('duplicaterules.ts action check duplicates V2 ');
             const shortLivedToken = (_a = req.session) === null || _a === void 0 ? void 0 : _a.shortLivedToken;
             const { payload } = req.body;
-            console.log('Token = ', shortLivedToken, " , body ", payload);
-            return res.status(200).send({});
+            if (!shortLivedToken) {
+                return res.status(401).send({ message: 'Unauthorized' });
+            }
+            const itemId = (_c = (_b = payload.inputFields) === null || _b === void 0 ? void 0 : _b.itemId) !== null && _c !== void 0 ? _c : (_d = payload.context) === null || _d === void 0 ? void 0 : _d.itemId;
+            const boardId = (_f = (_e = payload.inputFields) === null || _e === void 0 ? void 0 : _e.boardId) !== null && _f !== void 0 ? _f : (_g = payload.context) === null || _g === void 0 ? void 0 : _g.boardId;
+            // Extract the user-selected columns from the payload
+            // Note: Monday sometimes passes column IDs as { value: "status" } or just "status"
+            const getColId = (col) => { var _a; return (_a = col === null || col === void 0 ? void 0 : col.value) !== null && _a !== void 0 ? _a : col; };
+            const isDupColId = getColId((_h = payload.inputFields) === null || _h === void 0 ? void 0 : _h.columnIdIsDuplicate);
+            const dupErrColId = getColId((_j = payload.inputFields) === null || _j === void 0 ? void 0 : _j.columnIdDuplicateMessage);
+            if (!itemId || !isDupColId || !dupErrColId) {
+                console.error('[Duplicate V2] Missing required payload data:', payload);
+                return res.status(200).send({});
+            }
+            // RESPOND IMMEDIATELY TO PREVENT TIMEOUTS
+            res.status(200).send({});
+            try {
+                if (boardId && String(boardId) === String(PRODUCT_BOARD_ID)) {
+                    console.log(`[Duplicate V2] Running product check for item ${itemId}`);
+                    yield (0, item_duplicacy_1.checkProductDuplicacyV2)(shortLivedToken, itemId, isDupColId, dupErrColId);
+                }
+                else if (boardId && String(boardId) === String(DISPATCH_AND_BILLING_BOARD_ID)) {
+                    console.log(`[Duplicate V2] Running dispatch/billing check for item ${itemId}`);
+                    yield (0, item_duplicacy_1.checkDispatchAndBillingDuplicacyV2)(shortLivedToken, itemId, isDupColId, dupErrColId);
+                }
+                else {
+                    console.warn(`[Duplicate V2] boardId not recognized — attempting product check as default`);
+                    //await checkProductDuplicacyV2(shortLivedToken, itemId, isDupColId, dupErrColId);
+                }
+            }
+            catch (err) {
+                console.error('[Duplicate V2] Error:', err.message);
+            }
         });
     }
     static actionCheckDuplicate(req, res) {
