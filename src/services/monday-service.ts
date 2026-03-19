@@ -6,9 +6,6 @@ import { getColumnValueQuery } from "../queries.graphql";
 
 class MondayService {
 
-    /**
-     * Gets basic user information
-     */
     static async getMe(shortLiveToken: string) {
         try {
             const mondayClient = new ApiClient({ token: shortLiveToken });
@@ -16,9 +13,6 @@ class MondayService {
         } catch (err) { console.error("❌ Monday Service Error (getMe):", err); }
     }
 
-    /**
-     * Fetches a specific column value - useful for simple lookups
-     */
     static async getColumnValue(token: string, itemId: string | number, columnId: string) {
         try {
             const mondayClient = new ApiClient({ token: token });
@@ -28,15 +22,11 @@ class MondayService {
         } catch (err) { console.error("❌ Monday Service Error (getColumnValue):", err); }
     }
 
-    /**
-     * Updates a column value. Automatically handles Long Text formatting.
-     */
     static async changeColumnValue(token: string, boardId: string | number, itemId: string | number, columnId: string, value: any) {
         try {
             const mondayClient = new ApiClient({ token: token });
             
             let finalValue = value;
-            // If it's a Long Text column, Monday requires a specific JSON object {text: "..."}
             if (typeof value === 'string' && columnId.includes('long_text')) {
                 finalValue = { text: value };
             }
@@ -54,10 +44,6 @@ class MondayService {
         }
     }
 
-    /**
-     * Fetches all column definitions for a board. 
-     * Used to populate dropdowns in the automation recipe.
-     */
     static async getBoardColumns(token: string, boardId: number | string) {
         try {
             const mondayClient = new ApiClient({ token: token });
@@ -77,15 +63,13 @@ class MondayService {
     }
 
     /**
-     * THE SMART QUERY: Fetches item data, assets, and column values.
-     * Optimized to prevent "Complexity Budget Exhausted" errors on Subitems.
+     * THE SMART QUERY: Now explicitly fetches Formula display_values 
+     * and handles Parent Items seamlessly.
      */
     static async getSmartItemData(token: string, itemId: number | string) {
         try {
             const mondayClient = new ApiClient({ token: token });
             
-            // We fetch the board ID dynamically so subitem updates work correctly.
-            // Fragments for BoardRelation and MirrorValue are kept light (no nested assets).
             const query = `
               query ($itemId: [ID!]) {
                 items(ids: $itemId) {
@@ -96,11 +80,21 @@ class MondayService {
                     column { title }
                     text
                     value
-                    ... on BoardRelationValue {
-                      display_value
-                    }
-                    ... on MirrorValue {
-                      display_value
+                    ... on FormulaValue { display_value }
+                    ... on BoardRelationValue { display_value }
+                    ... on MirrorValue { display_value }
+                  }
+                  parent_item {
+                    id
+                    assets { id public_url name }
+                    column_values {
+                      id
+                      column { title }
+                      text
+                      value
+                      ... on FormulaValue { display_value }
+                      ... on BoardRelationValue { display_value }
+                      ... on MirrorValue { display_value }
                     }
                   }
                 }
