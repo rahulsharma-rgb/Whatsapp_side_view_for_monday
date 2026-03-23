@@ -18,6 +18,7 @@ export class InvocableActions {
                     { title: "Custom Invoice (Text/Doc)", value: "custom_invoice_document" },
                     { title: "Delivery Update (Text)", value: "delivery_update" },
                     { title: "WhatsApp Document (PDF)", value: "whatsapp_document" },
+                    { title: "Lead Document (Text)", value: "lead" },
                     { title: "Hello World (Test)", value: "hello_world" }
                 ]
             });
@@ -74,11 +75,28 @@ export class InvocableActions {
 
             if (!itemId || !finalPhoneColId) return res.status(200).send({});
 
+            // ⏱️ MAGIC DELAY: Give Monday time to calculate formulas
+            await new Promise(resolve => setTimeout(resolve, 2500));
+
             const itemData = await MondayService.getSmartItemData(shortLivedToken, itemId);
             if (!itemData) return res.status(200).send({});
 
             actualBoardId = itemData.board?.id || boardId;
             const isSubitem = String(actualBoardId) !== String(boardId);
+            
+            let parentItemData: any = null;
+            if (isSubitem) {
+                const parentRelationCol = itemData.column_values.find((c: any) => c.type === 'board_relation' || c.id === 'parent_item');
+                if (parentRelationCol && parentRelationCol.value) {
+                    try {
+                        const parsed = JSON.parse(parentRelationCol.value);
+                        const parentId = parsed?.linkedPulseIds?.[0]?.linkedPulseId;
+                        if (parentId) {
+                            parentItemData = await MondayService.getSmartItemData(shortLivedToken, parentId);
+                        }
+                    } catch(e) {}
+                }
+            }
 
             if (isSubitem) {
                 const parentColumns = await MondayService.getBoardColumns(shortLivedToken, boardId);
@@ -116,7 +134,7 @@ export class InvocableActions {
                     if (foundCol) break;
                 }
 
-                // 2. Partial Match Search (if exact fails - e.g. looking for "Total Amount" but column is "Total Amount (Rs)")
+                // 2. Partial Match Search
                 if (!foundCol) {
                     for (const title of titles) {
                         const cleanTitle = title.toLowerCase().trim();
@@ -130,7 +148,6 @@ export class InvocableActions {
 
                 // Extract and format the value
                 if (foundCol) {
-                    // Clean up extra quotes Monday puts on formulas 
                     const cleanStr = (str: any) => String(str).replace(/['"]+/g, '');
 
                     if (foundCol.display_value) return cleanStr(foundCol.display_value);
@@ -224,7 +241,7 @@ export class InvocableActions {
                     getColText("Bag Weight"),          
                     getColText("Final Rate")           
                 ];
-                const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n* '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'*\nAll other details are provided in the attached document.`;
+                const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'\nAll other details are provided in the attached document.`;
                 messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
             }
 
@@ -232,40 +249,52 @@ export class InvocableActions {
                 actualMetaTemplateName = 'sales_confirmation'; 
                 variables = [
                     getColText("Supplier Business Unit"), 
-                    getColText("Supplier"),               
-                    getColText("Buyer"),                  
+                    getColText("Buyer"),               
+                    getColText("Supplier"),                  
                     getColText("Summary"),                
                     getColText("Quantity"),               
                     getColText("Bag Weight"),             
                     getColText("Final Rate")           
                 ];
-                const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n* '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'*\nAll other details are provided in the attached document.`;
+                const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'\nAll other details are provided in the attached document.`;
                 messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
             }
             
             else if (templateName === 'commission_invoice') {
                 variables = [
                     getColText("Business Units"), 
-                    getColText("Company Mill/Factory/Delivery Address"),           
-                    getColText("Company"),          
+                    getColText("Buyer Mill/Factory/Delivery Address"),           
+                    getColText("Buyer"),          
                     getColText("Net Amount"),         
                     getColText("Invoice From Date"),      
                     getColText("Invoice To Date"),        
                     getColText("Phone"),        
-                    getColText("Company")    
+                    getColText("Buyer")    
                 ];
                 const bodyText = `Thanks for purchasing yarn via ${variables[0]}.\n\n${variables[1]} - ${variables[2]} commission bill amt Rs. ${variables[3]} from Date ${variables[4]} to ${variables[5]} has been raised and dispatched to your office.\n\nHope to receive the payment at earliest contact - ${variables[6]}\nThanks.\nAccount dept\n${variables[7]}\nAll other details are provided in the attached document.`;
                 messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
             }
 
             else if (templateName === 'transport_invoice') {
+                const type       = getColText("Type");
+                const rate       = parseFloat(getColText("Rate")) || 0;
+                const noOfBags   = parseFloat(getColText("No. Of Bags")) || 0;
+                const bagWeight  = parseFloat(getColText("Bag Weight")) || 0;
+
+                const totalWeight = noOfBags * bagWeight;
+                const totalAmount = type === "Bag"
+                    ? rate * noOfBags
+                    : type === "Kg"
+                        ? rate * totalWeight
+                        : 0;
+
                 variables = [
-                    getColText("Business Units"), 
-                    getColText("To"),             
-                    getColText("Total Amount"),   
-                    getColText("Date")            
+                    getColText("Business Units"),
+                    getColText("To"),
+                    String(totalAmount),
+                    getColText("Date")
                 ];
-                const bodyText = `The Transport In\n\n${variables[0]} – ${variables[1]} commission bill amt Rs ${variables[2]} for Date ${variables[3]} has been raised and dispatched to your office.\n\nHope to receive payment at earliest.\nAll other details are provided in the attached document.`;
+                const bodyText = `Transport Invoice\n\n${variables[0]} – ${variables[1]} commission bill amt Rs ${variables[2]} for Date ${variables[3]} has been raised and dispatched to your office.\n\nHope to receive payment at earliest.\nAll other details are provided in the attached document.`;
                 messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
             } 
             
@@ -284,8 +313,28 @@ export class InvocableActions {
                 messageToLog = `Delivery Update from ${variables[0]}\n\nMill: ${variables[1]}\nBuyer: ${variables[2]}\nCount: ${variables[3]}\nQty: ${variables[4]} Bags\nWeight: ${variables[5]} KG\nTo: ${variables[6]}\nDate: ${variables[7]}\n\nThank You.`;
             } 
             
+            else if (templateName === 'lead') {
+                const bodyText = "Hi,\n\nPlease find attached the quotation for the selected counts.\n\nThe document contains a list of suppliers along with their respective prices for your reference. Kindly review the details and let us know your feedback or if you would like to proceed with any option.\n\nFeel free to reach out in case of any queries.\n\nThank you.";
+                messageToLog = bodyText;
+            } 
+            
             else if (templateName === 'hello_world') {
                 messageToLog = "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification.";
+            }
+
+            // ==========================================
+            // 🚨 META API SAFETY CHECKS 🚨
+            // ==========================================
+
+            // Safety Check 1: Meta strictly forbids newlines (\n) in body variables (causes 135000 Error).
+            // This replaces line breaks in addresses with a comma.
+            variables = variables.map(v => String(v).replace(/[\r\n]+/g, ', ').trim());
+
+            // Safety Check 2: disptach_and_billing, delivery_update, and lead do NOT have a Document Header in Meta.
+            // If we send a document to them, Meta throws a 135000 Generic User Error.
+            if (actualMetaTemplateName === 'disptach_and_billing' || actualMetaTemplateName === 'delivery_update' || actualMetaTemplateName === 'lead') {
+                fileUrl = undefined;
+                fileName = undefined;
             }
 
             const lang = actualMetaTemplateName === 'hello_world' ? 'en_US' : 'en';
