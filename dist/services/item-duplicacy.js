@@ -119,7 +119,7 @@ function updateItemColumns(token, boardId, itemId, columnValues) {
         yield client.request(mutation, {
             boardId: String(boardId), itemId: String(itemId), columnValues: JSON.stringify(columnValues),
         });
-        console.log(`✅ ItemDuplicacy: Updated item ${itemId} on board ${boardId}`);
+        //console.log(`✅ ItemDuplicacy: Updated item ${itemId} on board ${boardId}`);
     });
 }
 // ============================================================================
@@ -137,6 +137,7 @@ function checkProductDuplicacyV2(token, itemId, isDupColId, dupErrColId) {
             getBoardColumns(token, boardId),
             getAllBoardRecords(token, boardId),
         ]);
+        console.log(`[Products board V2] Starting check for item ${itemId}`);
         // 1. Define all columns that must match exactly
         const multiMatchColTitles = [
             "Thread Count", "Machine", "Type", "Fabric 1", "Fabric 1 (Percentage)",
@@ -174,6 +175,7 @@ function checkProductDuplicacyV2(token, itemId, isDupColId, dupErrColId) {
                 : "";
         }
         // 5. Update the Dynamic Columns
+        console.log("Product duplicacy checks, isDuplicate:: ", isDuplicate, ", error to be loggged: ", errorMessage);
         yield updateItemColumns(token, boardId, itemId, {
             [isDupColId]: { checked: isDuplicate ? "true" : "false" },
             [dupErrColId]: errorMessage,
@@ -211,6 +213,7 @@ function checkDispatchAndBillingDuplicacyV2(token, itemId, isDupColId, dupErrCol
                 ? `Duplicate of item ID: ${duplicateRecord.id} — "${duplicateRecord.name}"`
                 : "";
         }
+        console.log("Dispatch and billing duplicacy checks, isDuplicate:: ", isDuplicate, ", error to be loggged: ", errorMessage);
         yield updateItemColumns(token, boardId, itemId, {
             [isDupColId]: { checked: isDuplicate ? "true" : "false" },
             [dupErrColId]: errorMessage,
@@ -218,24 +221,3 @@ function checkDispatchAndBillingDuplicacyV2(token, itemId, isDupColId, dupErrCol
         return { isDuplicate, duplicateId: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.id, duplicateName: duplicateRecord === null || duplicateRecord === void 0 ? void 0 : duplicateRecord.name };
     });
 }
-/*
-// ============================================================================
-// 3. V1 BACKWARDS COMPATIBILITY
-// (For any old workflows that don't pass dynamic columns)
-// ============================================================================
-export async function checkProductDuplicacy(token: string, itemId: string | number): Promise<DuplicateCheckResult> {
-    const triggeringRecord = await getRecordById(token, itemId);
-    const boardColumns = await getBoardColumns(token, triggeringRecord.board!.id);
-    const isDupColId = getColumnIdByTitle(boardColumns, "Is Duplicate");
-    const dupErrColId = getColumnIdByTitle(boardColumns, "Duplicate Error");
-    return await checkProductDuplicacyV2(token, itemId, isDupColId, dupErrColId);
-}
-
-export async function checkDispatchAndBillingDuplicacy(token: string, itemId: string | number): Promise<DuplicateCheckResult> {
-    const triggeringRecord = await getRecordById(token, itemId);
-    const boardColumns = await getBoardColumns(token, triggeringRecord.board!.id);
-    const isDupColId = getColumnIdByTitle(boardColumns, "Is Duplicate");
-    const dupErrColId = getColumnIdByTitle(boardColumns, "Duplicate Error");
-    return await checkDispatchAndBillingDuplicacyV2(token, itemId, isDupColId, dupErrColId);
-}
-*/ 

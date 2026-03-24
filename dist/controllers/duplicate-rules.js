@@ -11,14 +11,15 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DuplicateRules = void 0;
 const item_duplicacy_1 = require("../services/item-duplicacy");
+const constants_1 = require("../constants/constants");
 // Board IDs used to decide WHICH duplicate rule to apply
-const PRODUCT_BOARD_ID = "5026452240"; //process.env.PRODUCT_BOARD_ID;
-const DISPATCH_AND_BILLING_BOARD_ID = "5026792171"; //process.env.DISPATCH_AND_BILLING_BOARD_ID;
+const PRODUCT_BOARD_ID = constants_1.PRODUCT_BOARD_ID; //process.env.PRODUCT_BOARD_ID;
+const DISPATCH_AND_BILLING_BOARD_ID = constants_1.DISPATCH_AND_BILLING_BOARD_ID; //process.env.DISPATCH_AND_BILLING_BOARD_ID;
 class DuplicateRules {
     static actionCheckDuplicateWithLogger(req, res) {
         return __awaiter(this, void 0, void 0, function* () {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j;
-            console.log('duplicaterules.ts action check duplicates V2 ');
+            console.log('duplicaterules.ts actionCheckDuplicateWithLogger V2 ');
             const shortLivedToken = (_a = req.session) === null || _a === void 0 ? void 0 : _a.shortLivedToken;
             const { payload } = req.body;
             if (!shortLivedToken) {
@@ -26,6 +27,7 @@ class DuplicateRules {
             }
             const itemId = (_c = (_b = payload.inputFields) === null || _b === void 0 ? void 0 : _b.itemId) !== null && _c !== void 0 ? _c : (_d = payload.context) === null || _d === void 0 ? void 0 : _d.itemId;
             const boardId = (_f = (_e = payload.inputFields) === null || _e === void 0 ? void 0 : _e.boardId) !== null && _f !== void 0 ? _f : (_g = payload.context) === null || _g === void 0 ? void 0 : _g.boardId;
+            console.log('duplicaterules.ts item id ', itemId, ", boardId = ", boardId);
             // Extract the user-selected columns from the payload
             // Note: Monday sometimes passes column IDs as { value: "status" } or just "status"
             const getColId = (col) => { var _a; return (_a = col === null || col === void 0 ? void 0 : col.value) !== null && _a !== void 0 ? _a : col; };

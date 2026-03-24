@@ -7,7 +7,8 @@ import * as transformationController from '../controllers/monday-controller';
 import authenticationMiddleware from '../middlewares/authentication';
 import { InvocableActions } from '../controllers/invocable-actions'; // IMPORT NEW CLASS
 import { DuplicateRules } from '../controllers/duplicate-rules';
-
+import { AutoNumberHandler } from "../controllers/auto-number-handler";
+import { DateTimeHandler } from "../controllers/date-time-handler";
 // 1. Existing boilerplate routes
 router.post('/api/monday/execute_action', authenticationMiddleware, transformationController.executeAction);
 router.post('/api/monday/reverse_string', authenticationMiddleware, transformationController.reverseString);
@@ -33,6 +34,10 @@ router.post('/api/monday/get_columns', authenticationMiddleware, InvocableAction
 //3. Checking Duplicates
 router.post("/api/monday/check-duplicates", authenticationMiddleware, DuplicateRules.actionCheckDuplicateWithLogger);
 
+//4. Increase Custom Auto Number (Text or Numeric) fields after creation.
+router.post("/api/monday/calculate-auto-number", authenticationMiddleware, AutoNumberHandler.handleCustomAutoNumberCalculation);
+
+router.post("/api/monday/set-date-to-now", authenticationMiddleware, DateTimeHandler.handleSetDateTimeColumnAsNow);
 
 
 export default router;
