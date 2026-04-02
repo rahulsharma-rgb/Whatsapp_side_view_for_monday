@@ -18,7 +18,8 @@ export class InvocableActions {
                     { title: "Custom Invoice (Text/Doc)", value: "custom_invoice_document" },
                     { title: "Delivery Update (Text)", value: "delivery_update" },
                     { title: "WhatsApp Document (PDF)", value: "whatsapp_document" },
-                    { title: "Lead Document (Text)", value: "lead" },
+                    { title: "Lead Document (Doc)", value: "lead_document" }, // NEW
+                    { title: "Bank Details (Text)", value: "bank_details" },
                     { title: "Hello World (Test)", value: "hello_world" }
                 ]
             });
@@ -313,10 +314,27 @@ export class InvocableActions {
                 messageToLog = `Delivery Update from ${variables[0]}\n\nMill: ${variables[1]}\nBuyer: ${variables[2]}\nCount: ${variables[3]}\nQty: ${variables[4]} Bags\nWeight: ${variables[5]} KG\nTo: ${variables[6]}\nDate: ${variables[7]}\n\nThank You.`;
             } 
             
-            else if (templateName === 'lead') {
+            else if (templateName === 'lead_document') {
                 const bodyText = "Hi,\n\nPlease find attached the quotation for the selected counts.\n\nThe document contains a list of suppliers along with their respective prices for your reference. Kindly review the details and let us know your feedback or if you would like to proceed with any option.\n\nFeel free to reach out in case of any queries.\n\nThank you.";
-                messageToLog = bodyText;
+                // We add the document name to the log since this template now supports documents!
+                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
             } 
+            
+            else if (templateName === 'bank_details') {
+                const bankDetail1 = getColText("Bank Details 1", "Bank");
+                const bankDetail2 = getColText("Bank Details 2", "Bank");
+                
+                // Use different Meta templates based on number of bank details
+                if (bankDetail2) {
+                    actualMetaTemplateName = 'bank_details_double'; // Template with 2 variables
+                    variables = [bankDetail1, bankDetail2];
+                    messageToLog = `Here are the Bank Details\n\n${bankDetail1}\n\n${bankDetail2}\n\nThank you`;
+                } else {
+                    actualMetaTemplateName = 'bank_details_single'; // Template with 1 variable
+                    variables = [bankDetail1];
+                    messageToLog = `Here are the Bank Details\n\n${bankDetail1}\n\nThank you`;
+                }
+            }
             
             else if (templateName === 'hello_world') {
                 messageToLog = "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification.";
@@ -332,7 +350,7 @@ export class InvocableActions {
 
             // Safety Check 2: disptach_and_billing, delivery_update, and lead do NOT have a Document Header in Meta.
             // If we send a document to them, Meta throws a 135000 Generic User Error.
-            if (actualMetaTemplateName === 'disptach_and_billing' || actualMetaTemplateName === 'delivery_update' || actualMetaTemplateName === 'lead') {
+            if (actualMetaTemplateName === 'disptach_and_billing' || actualMetaTemplateName === 'delivery_update' || actualMetaTemplateName === 'bank_details') {
                 fileUrl = undefined;
                 fileName = undefined;
             }
@@ -356,6 +374,95 @@ export class InvocableActions {
         } catch (err) {
             console.error("❌ Catch Error in actionSendMessage:", err);
             return res.status(500).send({ message: 'Error' });
+        }
+    }
+
+    static async sendBankDetails(req: Request, res: Response) {
+        try {
+            console.log("\n" + "=".repeat(50));
+            console.log("=== SEND BANK DETAILS REQUEST ===");
+            console.log("=".repeat(50));
+            console.log("📥 Request Body:", JSON.stringify(req.body, null, 2));
+            console.log("📥 Request Headers:", JSON.stringify(req.headers, null, 2));
+            
+            const { buyerName, businessUnitName, bankDetails, phoneNumber } = req.body;
+            
+            console.log("\n📋 Extracted Data:");
+            console.log("  - Buyer Name:", buyerName);
+            console.log("  - Business Unit:", businessUnitName);
+            console.log("  - Bank Details:", bankDetails);
+            console.log("  - Phone Number:", phoneNumber);
+            
+            if (!phoneNumber || !bankDetails) {
+                console.error("❌ Validation Failed: Missing required fields");
+                return res.status(400).send({ message: 'Phone number and bank details are required' });
+            }
+            
+            // Clean phone number
+            const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+            console.log("\n📞 Phone Processing:");
+            console.log("  - Original:", phoneNumber);
+            console.log("  - Cleaned:", cleanPhone);
+            console.log("  - Length:", cleanPhone.length);
+            
+            if (cleanPhone.length < 10) {
+                console.error("❌ Validation Failed: Phone number too short");
+                return res.status(400).send({ message: 'Invalid phone number format' });
+            }
+            
+            // Prepare message variables for WhatsApp template
+            // send_bank_details template has only 1 variable: {{1}} for bank details
+            const variables = [
+                bankDetails.replace(/[\r\n]+/g, ', ').trim() // Replace newlines with commas for Meta API
+            ];
+            
+            console.log("\n📤 WhatsApp Message Preparation:");
+            console.log(`  - Template: send_bank_details`);
+            console.log(`  - To Phone: ${cleanPhone}`);
+            console.log(`  - Variable {{1}}: ${variables[0]}`);
+            console.log(`  - Note: Newlines replaced with commas to comply with Meta API requirements`);
+            
+            console.log("\n🚀 Calling WhatsApp Service...");
+            
+            const result = await WhatsappService.sendAdvancedTemplate(
+                cleanPhone,
+                'bank_details', 
+                variables,
+                undefined,
+                undefined,
+                'en'
+            );
+            
+            console.log("\n📨 WhatsApp API Response:");
+            console.log(JSON.stringify(result, null, 2));
+            
+            if (result.messages) {
+                console.log("\n✅ SUCCESS: Bank details sent successfully!");
+                console.log("  - WAMID:", result.messages[0].id);
+                console.log("=".repeat(50) + "\n");
+                return res.status(200).send({ 
+                    success: true, 
+                    message: 'Bank details sent successfully',
+                    wamid: result.messages[0].id
+                });
+            } else {
+                console.error("\n❌ FAILED: WhatsApp API Error");
+                console.error("  - Error:", result.error);
+                console.error("=".repeat(50) + "\n");
+                return res.status(500).send({ 
+                    success: false, 
+                    message: result.error?.message || 'Failed to send WhatsApp message' 
+                });
+            }
+        } catch (err: any) {
+            console.error("\n❌ EXCEPTION in sendBankDetails:");
+            console.error("  - Error Message:", err.message);
+            console.error("  - Error Stack:", err.stack);
+            console.error("=".repeat(50) + "\n");
+            return res.status(500).send({ 
+                success: false, 
+                message: err.message || 'Internal server error' 
+            });
         }
     }
 }

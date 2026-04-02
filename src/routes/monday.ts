@@ -39,5 +39,8 @@ router.post("/api/monday/calculate-auto-number", authenticationMiddleware, AutoN
 
 router.post("/api/monday/set-date-to-now", authenticationMiddleware, DateTimeHandler.handleSetDateTimeColumnAsNow);
 
+// 5. Send Bank Details via WhatsApp (Board View Feature)
+router.post('/api/monday/send_bank_details', InvocableActions.sendBankDetails);
+
 
 export default router;

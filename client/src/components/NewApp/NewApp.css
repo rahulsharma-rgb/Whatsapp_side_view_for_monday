@@ -1,0 +1,157 @@
+:root {
+    --border-color: #dee2e6;
+    --bg-color: #f8f9fa;
+    --text-label: #555;
+    --primary-color: #007bff;
+}
+
+.new-app-container {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #e9ecef;
+    padding: 20px;
+    font-size: 14px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+.content {
+    margin-top: 20px;
+}
+
+.content h2 {
+    margin: 0 0 20px 0;
+    color: #323338;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 200px;
+    margin-bottom: 20px;
+}
+
+.row {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 15px;
+}
+
+.row:last-child {
+    margin-bottom: 0;
+}
+
+.col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 300px;
+}
+
+.form-group {
+    margin-bottom: 0;
+}
+
+.form-group label {
+    min-width: 150px;
+    color: var(--text-label);
+    font-weight: 500;
+    margin-bottom: 10px;
+    display: block;
+    font-size: 14px;
+}
+
+.form-stats {
+    font-size: 12px;
+    color: #888;
+    margin-top: 6px;
+    font-style: italic;
+}
+
+.checkbox-group {
+    background: var(--bg-color);
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.2s ease;
+}
+
+.checkbox-label:hover {
+    background: #e9ecef;
+}
+
+.checkbox-label:last-child {
+    margin-bottom: 0;
+}
+
+.checkbox-label input[type="checkbox"] {
+    margin-right: 10px;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.button-container {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+.content button {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 4px;
+}
+
+.loading-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid var(--primary-color);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    margin-top: 20px;
+    color: #676879;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .row {
+        flex-direction: column;
+        gap: 15px;
+    }
+}

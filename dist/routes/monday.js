@@ -65,5 +65,6 @@ router.post("/api/monday/check-duplicates", authentication_1.default, duplicate_
 //4. Increase Custom Auto Number (Text or Numeric) fields after creation.
 router.post("/api/monday/calculate-auto-number", authentication_1.default, auto_number_handler_1.AutoNumberHandler.handleCustomAutoNumberCalculation);
 router.post("/api/monday/set-date-to-now", authentication_1.default, date_time_handler_1.DateTimeHandler.handleSetDateTimeColumnAsNow);
-router.post("/api/monday/v2/set-date-to-now", authentication_1.default, date_time_handler_1.DateTimeHandler.handleSetDateTimeColumnAsNow);
+// 5. Send Bank Details via WhatsApp (Board View Feature)
+router.post('/api/monday/send_bank_details', invocable_actions_1.InvocableActions.sendBankDetails);
 exports.default = router;

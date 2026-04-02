@@ -15,6 +15,8 @@ class WhatsappService {
     // 1. Download the secure Monday file and upload it directly to Meta
     static uploadMedia(fileUrl, fileName) {
         return __awaiter(this, void 0, void 0, function* () {
+            const phoneId = process.env.WHATSAPP_PHONE_ID;
+            const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
             try {
                 console.log(`📥 Downloading file from Monday: ${fileName}...`);
                 const fileResponse = yield fetch(fileUrl);
@@ -23,11 +25,11 @@ class WhatsappService {
                 const formData = new FormData();
                 formData.append('messaging_product', 'whatsapp');
                 formData.append('file', fileBlob, fileName);
-                const uploadUrl = `https://graph.facebook.com/v18.0/${this.API_CONFIG.DEFAULT_PHONE_ID}/media`;
+                const uploadUrl = `https://graph.facebook.com/v18.0/${phoneId}/media`;
                 const uploadResponse = yield fetch(uploadUrl, {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${this.API_CONFIG.ACCESS_TOKEN}`
+                        'Authorization': `Bearer ${accessToken}`
                     },
                     body: formData
                 });
@@ -48,7 +50,15 @@ class WhatsappService {
     // 2. Send the message using the secure Media ID instead of the broken link
     static sendAdvancedTemplate(toPhone_1, templateName_1, variables_1, fileUrl_1, fileName_1) {
         return __awaiter(this, arguments, void 0, function* (toPhone, templateName, variables, fileUrl, fileName, languageCode = 'en') {
-            const url = `https://graph.facebook.com/v18.0/${this.API_CONFIG.DEFAULT_PHONE_ID}/messages`;
+            const phoneId = process.env.WHATSAPP_PHONE_ID;
+            const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
+            console.log('🔍 WhatsApp Token Debug:');
+            console.log('Token exists:', !!accessToken);
+            console.log('Token length:', accessToken === null || accessToken === void 0 ? void 0 : accessToken.length);
+            console.log('Token first 20 chars:', accessToken === null || accessToken === void 0 ? void 0 : accessToken.substring(0, 20));
+            console.log('Token last 20 chars:', accessToken === null || accessToken === void 0 ? void 0 : accessToken.substring(accessToken.length - 20));
+            console.log('Phone ID:', phoneId);
+            const url = `https://graph.facebook.com/v18.0/${phoneId}/messages`;
             const components = [];
             if (fileUrl) {
                 const safeFileName = fileName || "Document.pdf";
@@ -81,20 +91,25 @@ class WhatsappService {
                     components: components.length > 0 ? components : undefined
                 }
             };
+            console.log('📤 Request URL:', url);
+            console.log('📤 Request Payload:', JSON.stringify(payload, null, 2));
+            console.log('🔑 Using Bearer token in Authorization header');
             const response = yield fetch(url, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${this.API_CONFIG.ACCESS_TOKEN}`,
+                    'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
             });
-            return yield response.json();
+            console.log('📥 Response Status:', response.status, response.statusText);
+            const data = yield response.json();
+            console.log('📥 WhatsApp API Response:', JSON.stringify(data, null, 2));
+            if (!response.ok) {
+                console.error('❌ WhatsApp API Error:', JSON.stringify(data, null, 2));
+            }
+            return data;
         });
     }
 }
 exports.WhatsappService = WhatsappService;
-WhatsappService.API_CONFIG = {
-    ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN,
-    DEFAULT_PHONE_ID: process.env.WHATSAPP_PHONE_ID
-};
