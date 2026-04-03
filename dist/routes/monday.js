@@ -45,6 +45,7 @@ const invocable_actions_1 = require("../controllers/invocable-actions"); // IMPO
 const duplicate_rules_1 = require("../controllers/duplicate-rules");
 const auto_number_handler_1 = require("../controllers/auto-number-handler");
 const date_time_handler_1 = require("../controllers/date-time-handler");
+const linked_item_handler_1 = require("../controllers/linked-item-handler");
 // 1. Existing boilerplate routes
 router.post('/api/monday/execute_action', authentication_1.default, transformationController.executeAction);
 router.post('/api/monday/reverse_string', authentication_1.default, transformationController.reverseString);
@@ -67,4 +68,6 @@ router.post("/api/monday/calculate-auto-number", authentication_1.default, auto_
 router.post("/api/monday/set-date-to-now", authentication_1.default, date_time_handler_1.DateTimeHandler.handleSetDateTimeColumnAsNow);
 // 5. Send Bank Details via WhatsApp (Board View Feature)
 router.post('/api/monday/send_bank_details', invocable_actions_1.InvocableActions.sendBankDetails);
+// NEW ROUTE FOR DYNAMIC COLUMN MAPPING
+router.post("/api/monday/fetch-linked-column", authentication_1.default, linked_item_handler_1.LinkedItemHandler.actionFetchAndPopulate);
 exports.default = router;

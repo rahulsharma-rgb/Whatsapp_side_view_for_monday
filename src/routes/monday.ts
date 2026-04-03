@@ -9,6 +9,7 @@ import { InvocableActions } from '../controllers/invocable-actions'; // IMPORT N
 import { DuplicateRules } from '../controllers/duplicate-rules';
 import { AutoNumberHandler } from "../controllers/auto-number-handler";
 import { DateTimeHandler } from "../controllers/date-time-handler";
+import { LinkedItemHandler } from "../controllers/linked-item-handler";
 // 1. Existing boilerplate routes
 router.post('/api/monday/execute_action', authenticationMiddleware, transformationController.executeAction);
 router.post('/api/monday/reverse_string', authenticationMiddleware, transformationController.reverseString);
@@ -41,6 +42,9 @@ router.post("/api/monday/set-date-to-now", authenticationMiddleware, DateTimeHan
 
 // 5. Send Bank Details via WhatsApp (Board View Feature)
 router.post('/api/monday/send_bank_details', InvocableActions.sendBankDetails);
+
+// NEW ROUTE FOR DYNAMIC COLUMN MAPPING
+router.post("/api/monday/fetch-linked-column", authenticationMiddleware, LinkedItemHandler.actionFetchAndPopulate);
 
 
 export default router;

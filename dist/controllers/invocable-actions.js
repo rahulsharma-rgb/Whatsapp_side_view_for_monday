@@ -320,9 +320,17 @@ class InvocableActions {
                 else if (templateName === 'bank_details') {
                     const bankDetail1 = getColText("Bank Details 1", "Bank");
                     const bankDetail2 = getColText("Bank Details 2", "Bank");
-                    const mergedBankDetails = `${bankDetail1}\n\n${bankDetail2}`;
-                    variables = [mergedBankDetails];
-                    messageToLog = `Here are the Bank Details\n\n${mergedBankDetails}\n\nThank you`;
+                    // Use different Meta templates based on number of bank details
+                    if (bankDetail2) {
+                        actualMetaTemplateName = 'bank_details_double'; // Template with 2 variables
+                        variables = [bankDetail1, bankDetail2];
+                        messageToLog = `Here are the Bank Details\n\n${bankDetail1}\n\n${bankDetail2}\n\nThank you`;
+                    }
+                    else {
+                        actualMetaTemplateName = 'bank_details_single'; // Template with 1 variable
+                        variables = [bankDetail1];
+                        messageToLog = `Here are the Bank Details\n\n${bankDetail1}\n\nThank you`;
+                    }
                 }
                 else if (templateName === 'hello_world') {
                     messageToLog = "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification.";
@@ -332,10 +340,7 @@ class InvocableActions {
                 // ==========================================
                 // Safety Check 1: Meta strictly forbids newlines (\n) in body variables (causes 135000 Error).
                 // This replaces line breaks in addresses with a comma.
-                // Exception: bank_details template is designed to handle formatted text with newlines
-                if (templateName !== 'bank_details') {
-                    variables = variables.map(v => String(v).replace(/[\r\n]+/g, ', ').trim());
-                }
+                variables = variables.map(v => String(v).replace(/[\r\n]+/g, ', ').trim());
                 // Safety Check 2: disptach_and_billing, delivery_update, and lead do NOT have a Document Header in Meta.
                 // If we send a document to them, Meta throws a 135000 Generic User Error.
                 if (actualMetaTemplateName === 'disptach_and_billing' || actualMetaTemplateName === 'delivery_update' || actualMetaTemplateName === 'bank_details') {
