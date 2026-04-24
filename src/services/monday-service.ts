@@ -1,111 +1,93 @@
-// File: src/services/monday-service.ts
-
 import { ApiClient } from '@mondaydotcomorg/api';
-import { GetColumnValueQuery, GetColumnValueQueryVariables } from "../generated/graphql";
-import { getColumnValueQuery } from "../queries.graphql";
 
 class MondayService {
 
-    static async getMe(shortLiveToken: string) {
-        try {
-            const mondayClient = new ApiClient({ token: shortLiveToken });
-            return await mondayClient.operations.getMeOp();
-        } catch (err) { console.error("❌ Monday Service Error (getMe):", err); }
-    }
-
-    static async getColumnValue(token: string, itemId: string | number, columnId: string) {
-        try {
-            const mondayClient = new ApiClient({ token: token });
-            const params: GetColumnValueQueryVariables = { itemId: [itemId.toString()], columnId: [columnId] };
-            const response: GetColumnValueQuery = await mondayClient.request<GetColumnValueQuery>(getColumnValueQuery, params);
-            return response?.items?.[0]?.column_values?.[0]?.value;
-        } catch (err) { console.error("❌ Monday Service Error (getColumnValue):", err); }
-    }
-
-    static async changeColumnValue(token: string, boardId: string | number, itemId: string | number, columnId: string, value: any) {
-        try {
-            const mondayClient = new ApiClient({ token: token });
-            
-            let finalValue = value;
-            if (typeof value === 'string' && columnId.includes('long_text')) {
-                finalValue = { text: value };
-            }
-
-            const stringifiedValue = JSON.stringify(finalValue);
-
-            return await mondayClient.operations.changeColumnValueOp({
-                boardId: String(boardId),
-                itemId: String(itemId),
-                columnId: columnId,
-                value: stringifiedValue,
-            });
-        } catch (err) { 
-            console.error("❌ Monday Service Error (changeColumnValue):", err); 
+    static async rawMondayQuery(token: string, query: string, variables: any = {}) {
+        const response = await fetch("https://api.monday.com/v2", {
+            method: 'POST',
+            headers: { 'Authorization': token, 'Content-Type': 'application/json', 'API-Version': '2023-10' },
+            body: JSON.stringify({ query, variables })
+        });
+        const data = await response.json();
+        if (data.errors) {
+            console.error("[BACKEND - MondayService] ❌ RAW MONDAY API ERROR:", JSON.stringify(data.errors, null, 2));
+            throw new Error(data.errors[0].message);
         }
+        return data;
     }
 
     static async getBoardColumns(token: string, boardId: number | string) {
         try {
-            const mondayClient = new ApiClient({ token: token });
+            const query = `query { boards(ids: [${boardId}]) { columns { id title type } } }`;
+            const result = await this.rawMondayQuery(token, query);
+            return result.data?.boards?.[0]?.columns;
+        } catch (err) { return null; }
+    }
+
+    static async getChatLogsByPhone(token: string, archiveBoardId: string, phone: string) {
+        console.log(`[BACKEND - MondayService] 🔍 Fetching Chat Logs for phone: ${phone}`);
+        try {
+            const columns = await this.getBoardColumns(token, archiveBoardId);
+            if (!columns) return [];
+
+            const phoneColId = columns.find((c: any) => c.title.toLowerCase().includes('phone') || c.title.toLowerCase().includes('whatsapp'))?.id;
+            const textColId = columns.find((c: any) => c.title.toLowerCase().includes('message') || c.title.toLowerCase().includes('text'))?.id;
+
+            if (!phoneColId || !textColId) return [];
+
             const query = `
-              query ($boardId: [ID!]) {
-                boards(ids: $boardId) {
-                  columns { id title type }
+                query {
+                    items_page_by_column_values(board_id: ${archiveBoardId}, columns: [{column_id: "${phoneColId}", column_values: ["${phone}"]}]) {
+                        items { name column_values { id text } }
+                    }
                 }
-              }
             `;
-            const response: any = await mondayClient.request(query, { boardId: [boardId.toString()] });
-            return response?.boards?.[0]?.columns;
+            
+            const result = await this.rawMondayQuery(token, query);
+            const items = result.data?.items_page_by_column_values?.items || [];
+            
+            console.log(`[BACKEND - MondayService] ✅ Found ${items.length} messages in database.`);
+            return items.map((item: any) => {
+                const text = item.column_values.find((c: any) => c.id === textColId)?.text;
+                const isAgent = item.name && item.name.toLowerCase().includes('to');
+                return { text, sender: isAgent ? 'agent' : 'customer' }; 
+            });
         } catch (err) {
-            console.error("❌ Monday Service Error (getBoardColumns):", err);
-            return null;
+            console.error("[BACKEND - MondayService] ❌ getChatLogsByPhone FAILED:", err);
+            return [];
         }
     }
 
-    /**
-     * THE SMART QUERY: Now explicitly fetches Formula display_values 
-     * and handles Parent Items seamlessly.
-     */
-    static async getSmartItemData(token: string, itemId: number | string) {
+    static async createChatLog(token: string, boardId: string, data: { phone: string; text: string; sender: string; wamid?: string }) {
+        console.log(`[BACKEND - MondayService] 🏗️ Preparing Single-Shot Chat Log for ${data.phone}...`);
         try {
-            const mondayClient = new ApiClient({ token: token });
-            
+            const columns = await this.getBoardColumns(token, boardId);
+            if (!columns) throw new Error("Could not fetch Archive Board columns");
+
+            const phoneCol = columns.find((c: any) => c.title.toLowerCase().includes('phone') || c.title.toLowerCase().includes('whatsapp'));
+            const textCol = columns.find((c: any) => c.title.toLowerCase().includes('message') || c.title.toLowerCase().includes('text'));
+            const wamidCol = columns.find((c: any) => c.title.toLowerCase().includes('id') || c.title.toLowerCase().includes('wamid'));
+
+            const direction = data.sender === 'agent' ? 'to' : 'from';
+            const itemName = `Message ${direction} ${data.phone}`;
+
+            let colVals: any = {};
+            if (textCol) colVals[textCol.id] = textCol.type === 'long_text' ? { text: data.text } : data.text;
+            if (phoneCol) colVals[phoneCol.id] = phoneCol.type === 'phone' ? { phone: data.phone, countryShortName: data.phone.startsWith('91') ? "IN" : "US" } : data.phone;
+            if (wamidCol && data.wamid) colVals[wamidCol.id] = data.wamid;
+
             const query = `
-              query ($itemId: [ID!]) {
-                items(ids: $itemId) {
-                  board { id } 
-                  assets { id public_url name } 
-                  column_values {
-                    id
-                    column { title }
-                    text
-                    value
-                    ... on FormulaValue { display_value }
-                    ... on BoardRelationValue { display_value }
-                    ... on MirrorValue { display_value }
-                  }
-                  parent_item {
-                    id
-                    assets { id public_url name }
-                    column_values {
-                      id
-                      column { title }
-                      text
-                      value
-                      ... on FormulaValue { display_value }
-                      ... on BoardRelationValue { display_value }
-                      ... on MirrorValue { display_value }
-                    }
-                  }
+                mutation($boardId: ID!, $itemName: String!, $colVals: JSON!) {
+                    create_item(board_id: $boardId, item_name: $itemName, column_values: $colVals) { id }
                 }
-              }
             `;
-            
-            const response: any = await mondayClient.request(query, { itemId: [itemId.toString()] });
-            return response?.items?.[0]; 
-        } catch (err) {
-            console.error("❌ Monday Service Error (getSmartItemData):", err);
-            return null;
+
+            const result = await this.rawMondayQuery(token, query, { boardId: String(boardId), itemName, colVals: JSON.stringify(colVals) });
+            console.log(`[BACKEND - MondayService] ✅ Single-shot injection successful! Item ID: ${result.data?.create_item?.id}`);
+            return result.data?.create_item?.id;
+        } catch (error: any) {
+            console.error("[BACKEND - MondayService] ❌ createChatLog CRASHED!", error);
+            throw error;
         }
     }
 }

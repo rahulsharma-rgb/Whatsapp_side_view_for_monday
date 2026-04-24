@@ -12,7 +12,7 @@ export class DuplicateRules {
 
     static async actionCheckDuplicateWithLogger(req: Request, res: Response) {
         console.log('duplicaterules.ts actionCheckDuplicateWithLogger V2 ');
-        const shortLivedToken = req.session?.shortLivedToken;
+        const shortLivedToken = (req as any).session?.shortLivedToken;
         const { payload }     = req.body;
 
         if (!shortLivedToken) {

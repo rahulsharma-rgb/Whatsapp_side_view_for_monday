@@ -7,7 +7,7 @@ import {
 export class DateTimeHandler {
     static async handleSetDateTimeColumnAsNow(req: Request, res: Response) {
         console.log('Datetimehandler.ts  calculating dateitime number for ');
-        const shortLivedToken = req.session?.shortLivedToken;
+        const shortLivedToken = (req as any).session?.shortLivedToken;
         const { payload }     = req.body;
 
         if (!shortLivedToken) {

@@ -6,7 +6,7 @@ import {
 
 export class AutoNumberHandler {
     static async handleCustomAutoNumberCalculation(req: Request, res: Response) {
-        const shortLivedToken = req.session?.shortLivedToken;
+        const shortLivedToken = (req as any).session?.shortLivedToken;
         const { payload }     = req.body;
 
         if (!shortLivedToken) {

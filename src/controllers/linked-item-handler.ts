@@ -5,7 +5,7 @@ import { handleFetchAndPopulateLinkedColumn } from '../services/linked-item-serv
 
 export class LinkedItemHandler {
     static async actionFetchAndPopulate(req: Request, res: Response) {
-        const shortLivedToken = req.session?.shortLivedToken;
+        const shortLivedToken = (req as any).session?.shortLivedToken;
         const { payload } = req.body;
 
         if (!shortLivedToken) {

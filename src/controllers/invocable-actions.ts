@@ -1,468 +1,91 @@
-// File: src/controllers/invocable-actions.ts
-
 import { Request, Response } from 'express';
 import MondayService from '../services/monday-service';
 import { WhatsappService } from '../services/whatsapp-service';
 
 export class InvocableActions {
-
-    static async getTemplates(req: Request, res: Response) {
-        try {
-            return res.status(200).send({
-                options: [
-                    { title: "Dispatch & Billing (Doc)", value: "disptach_and_billing" },
-                    { title: "Sales Conf. - BUYER (Doc)", value: "sales_confirmation_buyer" },
-                    { title: "Sales Conf. - SUPPLIER (Doc)", value: "sales_confirmation_supplier" },
-                    { title: "Commission Invoice (Doc)", value: "commission_invoice" },
-                    { title: "Transport Invoice (Doc)", value: "transport_invoice" },
-                    { title: "Custom Invoice (Text/Doc)", value: "custom_invoice_document" },
-                    { title: "Delivery Update (Text)", value: "delivery_update" },
-                    { title: "WhatsApp Document (PDF)", value: "whatsapp_document" },
-                    { title: "Lead Document (Doc)", value: "lead_document" }, // NEW
-                    { title: "Bank Details (Text)", value: "bank_details" },
-                    { title: "Hello World (Test)", value: "hello_world" }
-                ]
-            });
-        } catch (err) {
-            return res.status(500).send({ message: 'Internal error' });
-        }
-    }
-
-    static async getColumns(req: Request, res: Response) {
-        const shortLivedToken = req.session?.shortLivedToken;
-        const { payload } = req.body;
-        const boardId = payload?.boardId; 
-
-        if (!shortLivedToken || !boardId) return res.status(200).send({ options: [] });
-
-        try {
-            const columns = await MondayService.getBoardColumns(shortLivedToken, boardId);
-            if (!columns) return res.status(200).send({ options: [] });
-
-            const options = columns.map((col: any) => ({
-                title: `${col.title} (${col.type})`,
-                value: col.id
-            }));
-
-            return res.status(200).send({ options });
-        } catch (err) {
-            return res.status(500).send({ message: 'Internal error' });
-        }
-    }
-
-    static async actionSendMessage(req: Request, res: Response) {
-        const shortLivedToken = req.session?.shortLivedToken;
-        const { payload } = req.body;
-
-        if (!shortLivedToken) return res.status(401).send({ message: 'Unauthorized' });
-
-        const boardId        = payload.inputFields?.boardId   ?? payload.context?.boardId;
-        const itemId         = payload.inputFields?.itemId    ?? payload.context?.itemId;
+    
+    static async sendItemViewMessage(req: Request, res: Response) {
+        console.log("\n[BACKEND - InvocableActions] 📥 Received request to SEND a message from UI.");
         
-        let actualBoardId = boardId; 
+        const shortLivedToken = (req as any).session?.shortLivedToken;
+        const { phone, message } = req.body; 
+        const archiveBoardId = process.env.CHAT_ARCHIVE_BOARD_ID || "5027801430"; 
+        const token = shortLivedToken || process.env.MONDAY_TOKEN;
 
-        try {
-            let finalResponseColId = payload.inputFields?.responseColumn ?? payload.inboundFieldValues?.responseColumn;
-            let finalWamidColId    = payload.inputFields?.wamidColumn ?? payload.inboundFieldValues?.wamidColumn;
-            let finalTemplateColId = payload.inputFields?.templateLogColumn ?? payload.inboundFieldValues?.templateLogColumn;
-            let finalMessageColId  = payload.inputFields?.messageLogColumn ?? payload.inboundFieldValues?.messageLogColumn;
-            
-            const documentColumnObj = payload.inputFields?.documentColumn ?? payload.inboundFieldValues?.documentColumn;
-            let finalDocumentColId  = documentColumnObj?.value ?? documentColumnObj;
-            
-            const { templateId, toPhoneColumn } = payload.inboundFieldValues || {};
-            const templateName = templateId?.value ?? templateId ?? 'hello_world';
-            let finalPhoneColId = toPhoneColumn?.value ?? toPhoneColumn;
-
-            if (!itemId || !finalPhoneColId) return res.status(200).send({});
-
-            // ⏱️ MAGIC DELAY: Give Monday time to calculate formulas
-            await new Promise(resolve => setTimeout(resolve, 2500));
-
-            const itemData = await MondayService.getSmartItemData(shortLivedToken, itemId);
-            if (!itemData) return res.status(200).send({});
-
-            actualBoardId = itemData.board?.id || boardId;
-            const isSubitem = String(actualBoardId) !== String(boardId);
-            
-            let parentItemData: any = null;
-            if (isSubitem) {
-                const parentRelationCol = itemData.column_values.find((c: any) => c.type === 'board_relation' || c.id === 'parent_item');
-                if (parentRelationCol && parentRelationCol.value) {
-                    try {
-                        const parsed = JSON.parse(parentRelationCol.value);
-                        const parentId = parsed?.linkedPulseIds?.[0]?.linkedPulseId;
-                        if (parentId) {
-                            parentItemData = await MondayService.getSmartItemData(shortLivedToken, parentId);
-                        }
-                    } catch(e) {}
-                }
-            }
-
-            if (isSubitem) {
-                const parentColumns = await MondayService.getBoardColumns(shortLivedToken, boardId);
-                if (parentColumns) {
-                    const getSubitemColId = (parentColId: string | undefined) => {
-                        if (!parentColId) return undefined;
-                        const parentCol = parentColumns.find((c: any) => c.id === parentColId);
-                        if (!parentCol) return parentColId; 
-                        const subCol = itemData.column_values.find((c: any) => c.column?.title?.toLowerCase().trim() === parentCol.title.toLowerCase().trim());
-                        return subCol ? subCol.id : parentColId;
-                    };
-
-                    finalPhoneColId    = getSubitemColId(finalPhoneColId);
-                    finalResponseColId = getSubitemColId(finalResponseColId);
-                    finalWamidColId    = getSubitemColId(finalWamidColId);
-                    finalTemplateColId = getSubitemColId(finalTemplateColId);
-                    finalMessageColId  = getSubitemColId(finalMessageColId);
-                    finalDocumentColId = getSubitemColId(finalDocumentColId);
-                }
-            }
-
-            // ==========================================
-            // UNIVERSAL EXTRACTOR (Partial Match & Formula Fix)
-            // ==========================================
-            const getColText = (...titles: string[]) => {
-                let foundCol: any = null;
-
-                // 1. Exact Match Search
-                for (const title of titles) {
-                    const cleanTitle = title.toLowerCase().trim();
-                    foundCol = itemData.column_values.find((c: any) => c.column?.title?.toLowerCase().trim() === cleanTitle);
-                    if (!foundCol && itemData.parent_item?.column_values) {
-                        foundCol = itemData.parent_item.column_values.find((c: any) => c.column?.title?.toLowerCase().trim() === cleanTitle);
-                    }
-                    if (foundCol) break;
-                }
-
-                // 2. Partial Match Search
-                if (!foundCol) {
-                    for (const title of titles) {
-                        const cleanTitle = title.toLowerCase().trim();
-                        foundCol = itemData.column_values.find((c: any) => c.column?.title?.toLowerCase().includes(cleanTitle));
-                        if (!foundCol && itemData.parent_item?.column_values) {
-                            foundCol = itemData.parent_item.column_values.find((c: any) => c.column?.title?.toLowerCase().includes(cleanTitle));
-                        }
-                        if (foundCol) break;
-                    }
-                }
-
-                // Extract and format the value
-                if (foundCol) {
-                    const cleanStr = (str: any) => String(str).replace(/['"]+/g, '');
-
-                    if (foundCol.display_value) return cleanStr(foundCol.display_value);
-                    if (foundCol.text) return cleanStr(foundCol.text);
-                    
-                    if (foundCol.value) {
-                        try {
-                            const parsed = JSON.parse(foundCol.value);
-                            if (parsed !== null && typeof parsed === 'object') {
-                                if (parsed.result !== undefined && parsed.result !== null) return cleanStr(parsed.result);
-                                if (parsed.value !== undefined && parsed.value !== null) return cleanStr(parsed.value);
-                            } else if (parsed !== null && parsed !== "") {
-                                return cleanStr(parsed);
-                            }
-                        } catch (e) {
-                            return cleanStr(foundCol.value); 
-                        }
-                    }
-                }
-                return "N/A";
-            };
-
-            const phoneCol = itemData.column_values.find((c: any) => c.id === finalPhoneColId);
-            const rawPhone = phoneCol ? (phoneCol.text || phoneCol.display_value || "") : "";
-            let cleanPhone = rawPhone.replace(/[^0-9]/g, '').slice(0, 15);
-
-            if (!cleanPhone || cleanPhone.length < 10) {
-                if (finalResponseColId) await MondayService.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, "❌ Error: Invalid Phone");
-                return res.status(200).send({});
-            }
-
-            let variables: string[] = [];
-            let fileUrl: string | undefined = undefined;
-            let fileName: string | undefined = undefined; 
-            let messageToLog = `[Template Sent: ${templateName}]`; 
-
-            // Document Handler
-            if (finalDocumentColId) {
-                let docCol = itemData.column_values?.find((c: any) => c.id === finalDocumentColId);
-                let assetsSource = itemData.assets;
-
-                if (!docCol && itemData.parent_item) {
-                    docCol = itemData.parent_item.column_values?.find((c: any) => c.id === finalDocumentColId);
-                    assetsSource = itemData.parent_item.assets;
-                }
-
-                if (docCol && docCol.value) {
-                    try {
-                        const parsedValue = JSON.parse(docCol.value);
-                        if (parsedValue?.files?.length > 0) {
-                            const targetAssetId = parsedValue.files[0].assetId.toString();
-                            const specificAsset = assetsSource?.find((a: any) => a.id.toString() === targetAssetId);
-                            if (specificAsset) {
-                                fileUrl = specificAsset.public_url;
-                                fileName = specificAsset.name;
-                            }
-                        }
-                    } catch (e) { console.error("Could not parse file value"); }
-                }
-            } 
-
-            // ==========================================
-            // TEMPLATE MAPPINGS
-            // ==========================================
-            
-            let actualMetaTemplateName = templateName;
-
-            if (templateName === 'disptach_and_billing') {
-                variables = [
-                    getColText("Buyer Business Unit"), 
-                    getColText("Supplier"),      
-                    getColText("Buyer"),         
-                    getColText("Counts Summary"),
-                    isSubitem ? getColText("Quantity Dispatched") : getColText("Quantity"), 
-                    getColText("Total Weight"),  
-                    getColText("Buyer Office Address"), 
-                    getColText("Dispatch Date")  
-                ];
-                const bodyText = `Greetings from ${variables[0]}.\n\nWe are reaching out to confirm that your shipment has been delivered successfully. The delivery included items from the mill ${variables[1]} for the buyer ${variables[2]}. The specific counts for this order are ${variables[3]}, packed securely in ${variables[4]} bags, with a total delivery weight of ${variables[5]} KG. The entire shipment was delivered safely to the location ${variables[6]} on ${variables[7]}.\n\nThank You for your business!`;
-                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-            }
-            
-            else if (templateName === 'sales_confirmation_buyer') {
-                actualMetaTemplateName = 'sales_confirmation'; 
-                variables = [
-                    getColText("Buyer Business Unit"), 
-                    getColText("Supplier"),            
-                    getColText("Buyer"),               
-                    getColText("Summary"),             
-                    getColText("Quantity"),            
-                    getColText("Bag Weight"),          
-                    getColText("Final Rate")           
-                ];
-                const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'\nAll other details are provided in the attached document.`;
-                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-            }
-
-            else if (templateName === 'sales_confirmation_supplier') {
-                actualMetaTemplateName = 'sales_confirmation'; 
-                variables = [
-                    getColText("Supplier Business Unit"), 
-                    getColText("Buyer"),               
-                    getColText("Supplier"),                  
-                    getColText("Summary"),                
-                    getColText("Quantity"),               
-                    getColText("Bag Weight"),             
-                    getColText("Final Rate")           
-                ];
-                const bodyText = `Greetings from ${variables[0]},\n\nConfirmation has been sent for:\n '${variables[1]} - ${variables[2]} - ${variables[3]} - ${variables[4]}Bags - ${variables[5]}Kg/Bag - ${variables[6]} EX-Mill'\nAll other details are provided in the attached document.`;
-                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-            }
-            
-            else if (templateName === 'commission_invoice') {
-                variables = [
-                    getColText("Business Units"), 
-                    getColText("Buyer Mill/Factory/Delivery Address"),           
-                    getColText("Buyer"),          
-                    getColText("Net Amount"),         
-                    getColText("Invoice From Date"),      
-                    getColText("Invoice To Date"),        
-                    getColText("Phone"),        
-                    getColText("Buyer")    
-                ];
-                const bodyText = `Thanks for purchasing yarn via ${variables[0]}.\n\n${variables[1]} - ${variables[2]} commission bill amt Rs. ${variables[3]} from Date ${variables[4]} to ${variables[5]} has been raised and dispatched to your office.\n\nHope to receive the payment at earliest contact - ${variables[6]}\nThanks.\nAccount dept\n${variables[7]}\nAll other details are provided in the attached document.`;
-                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-            }
-
-            else if (templateName === 'transport_invoice') {
-                const type       = getColText("Type");
-                const rate       = parseFloat(getColText("Rate")) || 0;
-                const noOfBags   = parseFloat(getColText("No. Of Bags")) || 0;
-                const bagWeight  = parseFloat(getColText("Bag Weight")) || 0;
-
-                const totalWeight = noOfBags * bagWeight;
-                const totalAmount = type === "Bag"
-                    ? rate * noOfBags
-                    : type === "Kg"
-                        ? rate * totalWeight
-                        : 0;
-
-                variables = [
-                    getColText("Business Units"),
-                    getColText("To"),
-                    String(totalAmount),
-                    getColText("Date")
-                ];
-                const bodyText = `Transport Invoice\n\n${variables[0]} – ${variables[1]} commission bill amt Rs ${variables[2]} for Date ${variables[3]} has been raised and dispatched to your office.\n\nHope to receive payment at earliest.\nAll other details are provided in the attached document.`;
-                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-            } 
-            
-            else if (templateName === 'custom_invoice_document') {
-                variables = [getColText("Client Name", "Buyer"), getColText("Invoice No"), getColText("Amount"), getColText("Business Unit")];
-                const bodyText = `Dear ${variables[0]},\n\nPlease find attached your Brokerage Bill (Invoice No.${variables[1]}) for the total amount of Rs.${variables[2]}.\n\nWe at ${variables[3]} appreciate your business and wish you a great day!`;
-                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-            } 
-            
-            else if (templateName === 'delivery_update') {
-                variables = [
-                    getColText("Business Units"), getColText("Mill"), getColText("Buyer"), 
-                    getColText("Count"), getColText("Bags"), getColText("Total KGS"), 
-                    getColText("Sizing Name"), getColText("Date")
-                ];
-                messageToLog = `Delivery Update from ${variables[0]}\n\nMill: ${variables[1]}\nBuyer: ${variables[2]}\nCount: ${variables[3]}\nQty: ${variables[4]} Bags\nWeight: ${variables[5]} KG\nTo: ${variables[6]}\nDate: ${variables[7]}\n\nThank You.`;
-            } 
-            
-            else if (templateName === 'lead_document') {
-                const bodyText = "Hi,\n\nPlease find attached the quotation for the selected counts.\n\nThe document contains a list of suppliers along with their respective prices for your reference. Kindly review the details and let us know your feedback or if you would like to proceed with any option.\n\nFeel free to reach out in case of any queries.\n\nThank you.";
-                // We add the document name to the log since this template now supports documents!
-                messageToLog = fileUrl ? `[Document Sent: ${fileName}]\n\n${bodyText}` : bodyText;
-            } 
-            
-            else if (templateName === 'bank_details') {
-                const bankDetail1 = getColText("Bank Details 1", "Bank");
-                const bankDetail2 = getColText("Bank Details 2", "Bank");
-                
-                // Use different Meta templates based on number of bank details
-                if (bankDetail2) {
-                    actualMetaTemplateName = 'bank_details_double'; // Template with 2 variables
-                    variables = [bankDetail1, bankDetail2];
-                    messageToLog = `Here are the Bank Details\n\n${bankDetail1}\n\n${bankDetail2}\n\nThank you`;
-                } else {
-                    actualMetaTemplateName = 'bank_details_single'; // Template with 1 variable
-                    variables = [bankDetail1];
-                    messageToLog = `Here are the Bank Details\n\n${bankDetail1}\n\nThank you`;
-                }
-            }
-            
-            else if (templateName === 'hello_world') {
-                messageToLog = "Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification.";
-            }
-
-            // ==========================================
-            // 🚨 META API SAFETY CHECKS 🚨
-            // ==========================================
-
-            // Safety Check 1: Meta strictly forbids newlines (\n) in body variables (causes 135000 Error).
-            // This replaces line breaks in addresses with a comma.
-            variables = variables.map(v => String(v).replace(/[\r\n]+/g, ', ').trim());
-
-            // Safety Check 2: disptach_and_billing, delivery_update, and lead do NOT have a Document Header in Meta.
-            // If we send a document to them, Meta throws a 135000 Generic User Error.
-            if (actualMetaTemplateName === 'disptach_and_billing' || actualMetaTemplateName === 'delivery_update' || actualMetaTemplateName === 'bank_details') {
-                fileUrl = undefined;
-                fileName = undefined;
-            }
-
-            const lang = actualMetaTemplateName === 'hello_world' ? 'en_US' : 'en';
-            
-            console.log(`📞 Sending '${actualMetaTemplateName}' to phone: ${cleanPhone}`);
-            
-            const result = await WhatsappService.sendAdvancedTemplate(cleanPhone, actualMetaTemplateName, variables, fileUrl, fileName, lang);
-
-            if (result.messages) {
-                if (finalWamidColId) await MondayService.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalWamidColId, result.messages[0].id);
-                if (finalTemplateColId) await MondayService.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalTemplateColId, templateName);
-                if (finalMessageColId) await MondayService.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalMessageColId, messageToLog);
-                if (finalResponseColId) await MondayService.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, "✅ Sent!");
-            } else {
-                if (finalResponseColId) await MondayService.changeColumnValue(shortLivedToken, actualBoardId, itemId, finalResponseColId, `❌ ${result.error?.message || "Error"}`);
-            }
-
-            return res.status(200).send({});
-        } catch (err) {
-            console.error("❌ Catch Error in actionSendMessage:", err);
-            return res.status(500).send({ message: 'Error' });
+        if (!token || !phone || !message) {
+            console.error("[BACKEND - InvocableActions] ❌ Missing required fields (token, phone, or message).");
+            return res.status(400).send({ message: 'Missing required fields' });
         }
-    }
 
-    static async sendBankDetails(req: Request, res: Response) {
         try {
-            console.log("\n" + "=".repeat(50));
-            console.log("=== SEND BANK DETAILS REQUEST ===");
-            console.log("=".repeat(50));
-            console.log("📥 Request Body:", JSON.stringify(req.body, null, 2));
-            console.log("📥 Request Headers:", JSON.stringify(req.headers, null, 2));
-            
-            const { buyerName, businessUnitName, bankDetails, phoneNumber } = req.body;
-            
-            console.log("\n📋 Extracted Data:");
-            console.log("  - Buyer Name:", buyerName);
-            console.log("  - Business Unit:", businessUnitName);
-            console.log("  - Bank Details:", bankDetails);
-            console.log("  - Phone Number:", phoneNumber);
-            
-            if (!phoneNumber || !bankDetails) {
-                console.error("❌ Validation Failed: Missing required fields");
-                return res.status(400).send({ message: 'Phone number and bank details are required' });
+            console.log(`[BACKEND - InvocableActions] 🚀 Passing message to WhatsappService for phone: ${phone}`);
+            const cleanPhone = phone.replace(/[^0-9]/g, '');
+
+            const result = await WhatsappService.sendDirectText(cleanPhone, message);
+
+            if (archiveBoardId) {
+                console.log(`[BACKEND - InvocableActions] 📝 Logging OUTGOING message to Archive Board ID: ${archiveBoardId}`);
+                const isSuccess = !!result.messages;
+                const logText = isSuccess ? message : `❌ META REJECTED: ${message} (Reason: ${result.error?.message || 'Unknown'})`;
+                const wamid = isSuccess ? result.messages[0].id : "Failed";
+
+                await MondayService.createChatLog(token, archiveBoardId, {
+                    phone: cleanPhone,  
+                    text: logText,
+                    sender: 'agent',
+                    wamid: wamid
+                });
             }
-            
-            // Clean phone number
-            const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-            console.log("\n📞 Phone Processing:");
-            console.log("  - Original:", phoneNumber);
-            console.log("  - Cleaned:", cleanPhone);
-            console.log("  - Length:", cleanPhone.length);
-            
-            if (cleanPhone.length < 10) {
-                console.error("❌ Validation Failed: Phone number too short");
-                return res.status(400).send({ message: 'Invalid phone number format' });
-            }
-            
-            // Prepare message variables for WhatsApp template
-            // send_bank_details template has only 1 variable: {{1}} for bank details
-            const variables = [
-                bankDetails.replace(/[\r\n]+/g, ', ').trim() // Replace newlines with commas for Meta API
-            ];
-            
-            console.log("\n📤 WhatsApp Message Preparation:");
-            console.log(`  - Template: send_bank_details`);
-            console.log(`  - To Phone: ${cleanPhone}`);
-            console.log(`  - Variable {{1}}: ${variables[0]}`);
-            console.log(`  - Note: Newlines replaced with commas to comply with Meta API requirements`);
-            
-            console.log("\n🚀 Calling WhatsApp Service...");
-            
-            const result = await WhatsappService.sendAdvancedTemplate(
-                cleanPhone,
-                'bank_details', 
-                variables,
-                undefined,
-                undefined,
-                'en'
-            );
-            
-            console.log("\n📨 WhatsApp API Response:");
-            console.log(JSON.stringify(result, null, 2));
-            
+
             if (result.messages) {
-                console.log("\n✅ SUCCESS: Bank details sent successfully!");
-                console.log("  - WAMID:", result.messages[0].id);
-                console.log("=".repeat(50) + "\n");
-                return res.status(200).send({ 
-                    success: true, 
-                    message: 'Bank details sent successfully',
-                    wamid: result.messages[0].id
-                });
+                console.log("[BACKEND - InvocableActions] ✅ Outgoing process completed successfully.");
+                return res.status(200).send({ success: true, wamid: result.messages[0].id });
             } else {
-                console.error("\n❌ FAILED: WhatsApp API Error");
-                console.error("  - Error:", result.error);
-                console.error("=".repeat(50) + "\n");
-                return res.status(500).send({ 
-                    success: false, 
-                    message: result.error?.message || 'Failed to send WhatsApp message' 
-                });
+                console.warn("[BACKEND - InvocableActions] ⚠️ Message blocked by Meta, but error was logged.");
+                return res.status(400).send({ success: false, message: result.error?.message });
             }
         } catch (err: any) {
-            console.error("\n❌ EXCEPTION in sendBankDetails:");
-            console.error("  - Error Message:", err.message);
-            console.error("  - Error Stack:", err.stack);
-            console.error("=".repeat(50) + "\n");
-            return res.status(500).send({ 
-                success: false, 
-                message: err.message || 'Internal server error' 
-            });
+            console.error("[BACKEND - InvocableActions] ❌ Catch Error in sendItemViewMessage:", err);
+            return res.status(500).send({ message: err.message });
+        }
+    }
+
+    static async handleIncomingMessage(req: Request, res: Response) {
+        console.log("\n[BACKEND - InvocableActions] 🚨 INCOMING WEBHOOK TRIGGERED BY META!");
+        try {
+            const body = req.body;
+            if (body.object !== 'whatsapp_business_account') return res.sendStatus(404);
+
+            const entry = body.entry?.[0]?.changes?.[0]?.value;
+            const message = entry?.messages?.[0];
+
+            if (message && message.type === 'text') {
+                const customerPhone = message.from; 
+                const text = message.text.body;
+                const messageId = message.id; 
+
+                console.log(`[BACKEND - InvocableActions] 📨 Message Details - From: ${customerPhone} | Text: ${text}`);
+                
+                const archiveBoardId = process.env.CHAT_ARCHIVE_BOARD_ID || "5027801430";
+                const systemToken = process.env.MONDAY_TOKEN || process.env.MONDAY_API_TOKEN; 
+
+                if (systemToken && archiveBoardId) {
+                    console.log(`[BACKEND - InvocableActions] 📝 Passing INCOMING message to MondayService...`);
+                    await MondayService.createChatLog(systemToken, archiveBoardId, {
+                        phone: customerPhone, 
+                        text: text,
+                        sender: 'customer',
+                        wamid: messageId 
+                    });
+                    console.log(`[BACKEND - InvocableActions] ✅ Incoming message logged successfully!`);
+                } else {
+                    console.error(`[BACKEND - InvocableActions] ❌ Missing MONDAY_TOKEN! Cannot log to database.`);
+                }
+            }
+            return res.status(200).send('EVENT_RECEIVED');
+        } catch (err) {
+            console.error("[BACKEND - InvocableActions] ❌ Error in handleIncomingMessage:", err);
+            return res.status(200).send('EVENT_RECEIVED');
         }
     }
 }
