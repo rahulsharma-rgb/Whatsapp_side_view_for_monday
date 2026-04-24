@@ -88,4 +88,54 @@ export class InvocableActions {
             return res.status(200).send('EVENT_RECEIVED');
         }
     }
+
+    static verifyWebhook(req: Request, res: Response) {
+        console.log("\n[BACKEND - InvocableActions] 🚪 Meta is knocking at the door...");
+        
+        const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || 'mondaytest';
+        
+        const mode = req.query['hub.mode'];
+        const token = req.query['hub.verify_token'];
+        const challenge = req.query['hub.challenge'];
+
+        if (mode && token) {
+            if (mode === 'subscribe' && token === verifyToken) {
+                console.log("[BACKEND - InvocableActions] ✅ Meta Webhook Verified Successfully!");
+                return res.status(200).send(challenge); 
+            } else {
+                console.error("[BACKEND - InvocableActions] ❌ Webhook verification failed. Tokens don't match.");
+                return res.sendStatus(403);
+            }
+        }
+        
+        return res.status(400).send("Bad Request");
+    }
+
+    // ==========================================
+    // 📜 FETCH CHAT HISTORY FOR UI (GET)
+    // ==========================================
+    static async getChatHistory(req: Request, res: Response) {
+        console.log("\n[BACKEND - InvocableActions] 🔄 React UI is requesting chat history...");
+        
+        const shortLivedToken = (req as any).session?.shortLivedToken;
+        const token = shortLivedToken || process.env.MONDAY_TOKEN;
+        const { phone } = req.query;
+        const archiveBoardId = process.env.CHAT_ARCHIVE_BOARD_ID || "5027801430";
+
+        if (!phone || !token) {
+            return res.status(400).send({ message: "Missing phone number or authentication token" });
+        }
+
+        try {
+            // Remove + or spaces from phone just in case
+            const cleanPhone = (phone as string).replace(/[^0-9]/g, '');
+            const logs = await MondayService.getChatLogsByPhone(token, archiveBoardId, cleanPhone);
+            
+            console.log(`[BACKEND - InvocableActions] ✅ Sending ${logs.length} messages to UI.`);
+            return res.status(200).send({ success: true, data: logs });
+        } catch (err: any) {
+            console.error("[BACKEND - InvocableActions] ❌ Error fetching chat history:", err);
+            return res.status(500).send({ message: err.message });
+        }
+    }
 }
